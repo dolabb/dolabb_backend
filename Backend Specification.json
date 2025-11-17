@@ -1,0 +1,307 @@
+Backend Specification
+
+Environment / Config
+# Resend (email OTP)
+RESEND_API_KEY=re_GpJeG6m2_7XrfrArCDzQDSioMid4r4a74
+RESEND_FROM_EMAIL=onboarding@resend.dev
+
+# MongoDB
+Database Name: dolabb_db
+MONGODB_CONNECTION_STRING=mongodb+srv://dolabb_admin:Farad2025%24@cluster0.0imvu6l.mongodb.net/dolabb_db?retryWrites=true&w=majority
+
+# Other typical envs
+SECRET_KEY=your_jwt_secret_here
+JWT_EXPIRES_IN=7d
+OTP_EXPIRY_SECONDS=300
+PAGE_DEFAULT_LIMIT=10
+
+
+Architecture & tech notes
+1.Use MongoDB as primary DB
+2.JWT-based auth OTPs delivered via Resend email using RESEND_API_KEY.
+3.All endpoints (except auth) require Authorization: Bearer <jwt>.
+4.Every API below must be connected to MongoDB, no dummy data allowed.
+5.Each API should contain: controller, model, service, routes, validation.
+6.Use clean architecture (controllers, services, routes, models, middlewares).
+
+
+Data models For Dashboard:
+Admin Login:
+{
+  "_id": ObjectId,
+  "name": "Admin User",
+  "email": "admin@dolabb.com",
+  "passwordHash": "...",
+  "role": "admin",
+  "createdAt": ISODate,
+}
+
+Admin Signup:
+{
+  "_id": ObjectId,
+  "name": "Admin User",
+  "email": ".....",
+  "passwordHash": "...",
+  "confirmPasswordHash": "...",
+  "role": "admin",
+  "createdAt": ISODate,
+  otp: {
+    code: "randomly_generated_otp 4 digits",
+    expiresAt: ISODate
+  }
+}
+
+forget Password:
+{
+  "_id": ObjectId,
+  "email": ".....",
+  "otp": {
+    code: "randomly_generated_otp 4 digits",
+    expiresAt: ISODate
+  },
+  "createdAt": ISODate,
+  newPasswordHash: "....",
+  confrimPasswordHash: "....",
+}
+
+Dashboard Overview & Metrics
+
+Dashboard Stats:
+{
+  "totalUsers": Number,
+  "activeUsers": Number,
+  "totalListings": Number,
+  "Total Sales": Number,
+  "totalTransactions": Number,
+  "totalRevenue": Number,
+  "pendingCashouts": Number,
+  "recentActivities": [ { "type": "...", "details": "...", "date": ISODate } ]
+  "Open Disputes": Number,
+  "resolvedDisputes": Number,
+}
+
+Revenue & Users Trend
+{
+  "monthlyRevenue": [ { "month": "2024-01", "revenue": Number }, ... ],
+  "monthlyNewUsers": [ { "month": "2024-01", "newUsers": Number }, ... ]
+}
+
+Sales Over Time
+{
+  "dailySales": [ { "date": "2024-01-01", "sales": Number }, ... ],
+  "weeklySales": [ { "week": "2024-W01", "sales": Number }, ... ],
+  "monthlySales": [ { "month": "2024-01", "sales": Number }, ... ]
+}
+
+Listings Status Summary
+{
+  "activeListings": Number,
+  "soldListings": Number,
+  "removedListings": Number,
+  "pendingReviewListings": Number
+}
+
+Transaction Types Summary
+{
+  "purchaseTransactions": Number,
+  "offerTransactions": Number,
+  "acceptedOfferTransactions": Number
+}
+Disputes Status
+{
+  "openDisputes": Number,
+  "resolvedDisputes": Number,
+  "closedDisputes": Number
+}
+
+Cashout Requests
+
+{
+  "pendingCashouts": Number,
+  "approvedCashouts": Number,
+  "rejectedCashouts": Number
+}
+
+
+Get Listing:
+{
+  "_id": ObjectId,
+  "title": "...",
+  "description": "...",
+  "sellerId": ObjectId,
+  "SellerName":"....",
+  "category": "...",
+  "price": Number,
+  "status": "active"|"sold"|"removed",
+  "reviewed": boolean,
+  "approved": boolean,
+  "createdAt": ISODate,
+  "images": [ "...urls..." ]
+}
+CRUD Actions For Listings also hide listing too:
+
+User Management:
+{
+  "_id": ObjectId,
+  "name": "...",
+  "email": "...",
+  "type": "buyer"|"seller",
+  "status": "active"|"suspended"|"deactivated",
+  "joinDate": ISODate,
+  "Activity": { "totalPurchases": 0, "totalSpent": 0 with date}
+}
+Actions For User Management (Suspend,Deactivate,Delete):
+
+Transactions:
+{
+  "_id": ObjectId,
+  "type": "purchase"|"offer"|"accepted_offer",
+  "buyerId": ObjectId,
+  "buyerName":"....",
+  "sellerId": ObjectId,
+  "SellerName":"....",
+  "itemId": ObjectId,
+  "itemTitle": "...",
+  "offerAmount": Number,
+  "originalPrice": Number,
+  "dolabbFee": Number
+  "status": "pending"|"completed"|"rejected",
+  "date": ISODate,
+}
+
+Cashout Requests:
+{
+  "_id": ObjectId,
+  "SellerId": ObjectId,
+  "SellerName":"....",
+  "amount": Number,
+  "Requested Date": ISODate,
+  "Status": "pending"|"approved"|"rejected",
+  "accountDetails": "Bank ...",
+  "rejectionReason": null
+}
+
+Fee Settings:
+{
+  "Dolabb Fee Percentage": Percentage,
+  "Transaction Fee (Fixed Amount $)": Number,
+  
+}
+actions For Fee Settings (Update):
+
+Fee Collection Summary
+{
+  "Total Fees Collected": Number,
+  "Total Transactions": Number,
+  "Time Period": { "from": ISODate, "to": ISODate },
+  "Average Fee per Transaction": Number,
+}
+
+Disputes & Complaints
+{
+  "_id": ObjectId,
+  "caseNumber": "DISP-2025-001",
+  "type": "product_quality"|"delivery_issue"|"payment_dispute",
+  "buyerId": ObjectId,
+  "buyerName":"....",
+  "sellerId": ObjectId,
+  "SellerName":"....",
+  "itemId": ObjectId,
+  "itemTitle": "...",
+  "description": "...",
+  "status": "open"|"resolved"|"closed",
+  "createdAt": ISODate,
+  "adminNotes": "",
+  "resolution": "",
+}
+Actions For Disputes & Complaints (Update Status, Add Notes, Close Case):
+
+Notifications:
+
+Stores admin-created notifications.
+{
+  "_id": "ObjectId",
+  "title": "string",
+  "message": "string",
+  "type": "system_alert | buyer_message | seller_message | affiliate_message",
+  "targetAudience": "all | buyers | sellers | affiliates",
+  "active": true,
+  "createdBy": "adminId",
+  "createdAt": "ISODate",
+  "updatedAt": "ISODate",
+  "scheduledFor": "ISODate | null",
+  "variables": { "key": "value" }
+}
+UserNotifications:
+A notification created per user when admin clicks “Send”.
+{
+  "_id": "ObjectId",
+  "notificationId": "ObjectId",
+  "userId": "ObjectId",
+  "title": "string",
+  "message": "string",
+  "type": "string",
+  "isRead": false,
+  "deliveredAt": "ISODate",
+  "createdAt": "ISODate"
+}
+Core Requirements:
+1.Create,Edit,Delete ,Activate/deactivate notifications
+2.Send notification to: all users/Only buyers/Only sellers/Only affiliates
+3.Perform bulk actions on notifications - mark as read, delete
+4.Search notifications by title, message, type, date range
+
+Popup Requirement (Important):
+1.When admin sends a notification → it must immediately appear (popup) in user-side.must use WebSockets
+
+Notification Sending Logic:
+When admin clicks Send:
+1. Backend fetches user list based on targetAudience
+2. For each user, create UserNotification
+3.Trigger real-time delivery event
+4.Mark deliveredAt when received by user
+
+
+
+All Affiliate:
+{
+  "_id": ObjectId,
+  "Affiliatename": "...",
+  "Affiliateemail": "...",
+  "commissionRate": Number,
+"codeUsageCount": "number",
+
+  "Earnings":Number,(Total,Pending, Paid),
+  "Affiliatestatus": "active"|"deactivated",
+  "Last Activity	": ISODate,
+  "stats": { totalReferrals: Number, totalEarnings: Number }
+}
+Actions For Affiliate Management (Suspend,View Transactions,Update Commission Rate):
+
+Affiliate View Transactions(History):
+{
+  "_id": ObjectId,
+  "affiliateId": ObjectId,
+  "affiliateName":"....",
+  "stats": { totalReferrals: Number, totalEarnings: Number,Total Sales: Number,Commission Rate: Number },
+  "Transaction ID	": ObjectId,
+  "date": ISODate,
+  "Referred User Name":"...",
+  "Referred User Commission":Number,
+  "status": "pending"|"paid",
+}
+
+All Affiliate Payout Requests:
+{
+  "_id": ObjectId,
+  "affiliateId": ObjectId,
+  "affiliateName":"....",
+  "amount": Number,
+  "Requested Date": ISODate,
+  "Payment Method	": "Bank Transfer"|"PayPal"|"Crypto",
+  "Status": "pending"|"approved"|"rejected",
+  "accountDetails": "Bank ...",
+  "rejectionReason": null
+}
+Actions For Affiliate Payout Requests (Approve,Reject):
+

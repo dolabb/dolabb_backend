@@ -1,0 +1,1696 @@
+{
+  "info": {
+    "_postman_id": "dolabb-backend-api",
+    "name": "Dolabb Backend API",
+    "description": "Complete API collection for Dolabb marketplace backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Admin",
+          "item": [
+            {
+              "name": "Admin Signup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@dolabb.com\",\n  \"password\": \"admin123\",\n  \"confirm_password\": \"admin123\",\n  \"profile_image_url\": \"https://example.com/image.jpg\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/admin/signup/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "admin", "signup", ""]
+                }
+              }
+            },
+            {
+              "name": "Admin Login",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@dolabb.com\",\n  \"password\": \"admin123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/admin/login/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "admin", "login", ""]
+                }
+              }
+            },
+            {
+              "name": "Admin Forgot Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@dolabb.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/admin/forgot-password/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "admin", "forgot-password", ""]
+                }
+              }
+            },
+            {
+              "name": "Admin Reset Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@dolabb.com\",\n  \"otp\": \"1234\",\n  \"new_password\": \"newpass123\",\n  \"confirm_password\": \"newpass123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/admin/reset-password/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "admin", "reset-password", ""]
+                }
+              }
+            },
+            {
+              "name": "Admin Verify OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@dolabb.com\",\n  \"otp\": \"1234\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/admin/verify-otp/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "admin", "verify-otp", ""]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "User",
+          "item": [
+            {
+              "name": "User Signup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"John Doe\",\n  \"email\": \"user@example.com\",\n  \"phone\": \"+1234567890\",\n  \"password\": \"user123\",\n  \"confirm_password\": \"user123\",\n  \"country_code\": \"US\",\n  \"dial_code\": \"+1\",\n  \"profile_image_url\": \"https://example.com/image.jpg\",\n  \"role\": \"buyer\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/signup/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "signup", ""]
+                }
+              }
+            },
+            {
+              "name": "User Login",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"user123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/login/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "login", ""]
+                }
+              }
+            },
+            {
+              "name": "User Forgot Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/forgot-password/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "forgot-password", ""]
+                }
+              }
+            },
+            {
+              "name": "User Reset Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"1234\",\n  \"new_password\": \"newpass123\",\n  \"confirm_password\": \"newpass123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/reset-password/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "reset-password", ""]
+                }
+              }
+            },
+            {
+              "name": "User Verify OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"1234\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/verify-otp/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "verify-otp", ""]
+                }
+              }
+            },
+            {
+              "name": "Get Profile",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{user_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/auth/profile/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "profile", ""]
+                }
+              }
+            },
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{user_token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"John Updated\",\n  \"username\": \"johndoe\",\n  \"bio\": \"Updated bio\",\n  \"location\": \"New York\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/profile/update/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "profile", "update", ""]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Affiliate",
+          "item": [
+            {
+              "name": "Affiliate Signup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Affiliate User\",\n  \"email\": \"affiliate@example.com\",\n  \"phone\": \"+1234567890\",\n  \"password\": \"aff123\",\n  \"country_code\": \"US\",\n  \"bank_name\": \"Bank Name\",\n  \"account_number\": \"123456789\",\n  \"iban\": \"IBAN123\",\n  \"account_holder_name\": \"Affiliate User\",\n  \"profile_image_url\": \"https://example.com/image.jpg\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/affiliate/signup/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "affiliate", "signup", ""]
+                }
+              }
+            },
+            {
+              "name": "Affiliate Login",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"affiliate@example.com\",\n  \"password\": \"aff123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/affiliate/login/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "affiliate", "login", ""]
+                }
+              }
+            },
+            {
+              "name": "Affiliate Verify OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"affiliate@example.com\",\n  \"otp\": \"1234\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/affiliate/verify-otp/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "affiliate", "verify-otp", ""]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "OTP Management",
+          "item": [
+            {
+              "name": "Verify OTP (Combined)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"1234\",\n  \"user_type\": \"user\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/verify-otp-combined/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "verify-otp-combined", ""]
+                }
+              }
+            },
+            {
+              "name": "Resend OTP (Combined)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@example.com\",\n  \"user_type\": \"user\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/resend-otp/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "resend-otp", ""]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Image Upload",
+          "item": [
+            {
+              "name": "Upload Image",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "image",
+                      "type": "file",
+                      "src": []
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/upload-image/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "auth", "upload-image", ""]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Get Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/?page=1&limit=20&category=women&sortBy=newest",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "category",
+                  "value": "women",
+                  "description": "women, men, watches, jewelry, accessories"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "newest",
+                  "description": "newest, price"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Featured Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/featured/?limit=10&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "featured", ""],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Trending Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/trending/?limit=10&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "trending", ""],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Product Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{product_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{product_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemtitle\": \"Vintage Denim Jacket\",\n  \"description\": \"Beautiful vintage denim jacket\",\n  \"price\": 100,\n  \"originalPrice\": 120,\n  \"category\": \"women\",\n  \"Quantity\": 1,\n  \"Size\": \"M\",\n  \"Condition\": \"good\",\n  \"Shipping Cost\": 10,\n  \"Processing Time (days)\": 3,\n  \"Images\": [\"url1\", \"url2\"],\n  \"Tags/Keywords\": [\"vintage\", \"denim\", \"jacket\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products/create/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "create", ""]
+            }
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemtitle\": \"Updated Title\",\n  \"description\": \"Updated description\",\n  \"price\": 90\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products/{{product_id}}/update/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{product_id}}", "update", ""]
+            }
+          }
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{product_id}}/delete/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{product_id}}", "delete", ""]
+            }
+          }
+        },
+        {
+          "name": "Save Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{product_id}}/save/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{product_id}}", "save", ""]
+            }
+          }
+        },
+        {
+          "name": "Unsave Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{product_id}}/unsave/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{product_id}}", "unsave", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Seller Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/seller/{{seller_id}}/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "seller", "{{seller_id}}", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Offers",
+      "item": [
+        {
+          "name": "Create Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{product_id}}\",\n  \"offerAmount\": 80\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/offers/create/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "offers", "create", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/offers/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "offers", ""]
+            }
+          }
+        },
+        {
+          "name": "Accept Offer",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/offers/{{offer_id}}/accept/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "offers", "{{offer_id}}", "accept", ""]
+            }
+          }
+        },
+        {
+          "name": "Reject Offer",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/offers/{{offer_id}}/reject/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "offers", "{{offer_id}}", "reject", ""]
+            }
+          }
+        },
+        {
+          "name": "Counter Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"counterAmount\": 95\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/offers/{{offer_id}}/counter/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "offers", "{{offer_id}}", "counter", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Get Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chat/conversations/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "conversations", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chat/conversations/{{conversation_id}}/messages/?page=1&limit=50",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "chat",
+                "conversations",
+                "{{conversation_id}}",
+                "messages",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{receiver_id}}\",\n  \"text\": \"Hello! Is this item still available?\",\n  \"productId\": \"{{product_id}}\",\n  \"attachments\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/send/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "send", ""]
+            }
+          }
+        },
+        {
+          "name": "Send Message with Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{receiver_id}}\",\n  \"text\": \"I'm interested in making an offer\",\n  \"productId\": \"{{product_id}}\",\n  \"offerId\": \"{{offer_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/send/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "send", ""]
+            }
+          }
+        },
+        {
+          "name": "Upload File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/upload/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "upload", ""]
+            }
+          }
+        }
+      ],
+      "description": "Note: For real-time chat, use WebSocket at ws://localhost:8000/ws/chat/<conversation_id>/"
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"offerId\": \"{{offer_id}}\",\n  \"cartItems\": [],\n  \"deliveryAddress\": {\n    \"fullName\": \"John Doe\",\n    \"phone\": \"+1234567890\",\n    \"address\": \"123 Main St\",\n    \"city\": \"New York\",\n    \"postalCode\": \"10001\",\n    \"country\": \"USA\",\n    \"additionalInfo\": \"Apartment 4B\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payment/checkout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payment", "checkout", ""]
+            }
+          }
+        },
+        {
+          "name": "Process Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"tokenId\": \"token_from_moyasar\",\n  \"amount\": 10000,\n  \"description\": \"Order payment\",\n  \"metadata\": {\n    \"locale\": \"en\",\n    \"product\": \"Product Name\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payment/process/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payment", "process", ""]
+            }
+          }
+        },
+        {
+          "name": "Payment Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"payment_id\",\n  \"status\": \"paid\",\n  \"amount\": 10000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payment/webhook/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payment", "webhook", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Dashboard",
+      "item": [
+        {
+          "name": "Get User Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/products/?status=active&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "products", ""],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "active"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/orders/?status=ready&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "orders", ""],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ready"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/offers/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "offers", ""]
+            }
+          }
+        },
+        {
+          "name": "Ship Order",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trackingNumber\": \"TRACK123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/payments/{{order_id}}/ship/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "payments", "{{order_id}}", "ship", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/dashboard/stats/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "dashboard", "stats", ""]
+            }
+          }
+        },
+        {
+          "name": "Revenue Trends",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/dashboard/revenue-trends/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "dashboard", "revenue-trends", ""]
+            }
+          }
+        },
+        {
+          "name": "Sales Over Time",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/dashboard/sales-over-time/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "dashboard", "sales-over-time", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/?page=1&limit=20&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Suspend User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/{{user_id}}/suspend/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "users", "{{user_id}}", "suspend", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Listings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/listings/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "listings", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Listing",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/listings/{{listing_id}}/approve/",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "admin",
+                "listings",
+                "{{listing_id}}",
+                "approve",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/transactions/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "transactions", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Disputes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/disputes/?page=1&limit=20&status=open",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "disputes", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Dispute",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"adminNotes\": \"Issue resolved\",\n  \"resolution\": \"Refund issued\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/disputes/{{dispute_id}}/update/",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "admin",
+                "disputes",
+                "{{dispute_id}}",
+                "update",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Fee Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/fee-settings/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "fee-settings", ""]
+            }
+          }
+        },
+        {
+          "name": "Update Fee Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Dolabb Fee Percentage\": 5.0,\n  \"Transaction Fee (Fixed Amount $)\": 2.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/fee-settings/update/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "fee-settings", "update", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Affiliates",
+      "item": [
+        {
+          "name": "Validate Affiliate Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"AFF-XXXXXX\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/affiliate/validate-code/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "affiliate", "validate-code", ""]
+            }
+          }
+        },
+        {
+          "name": "Request Cashout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{affiliate_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100.50,\n  \"paymentMethod\": \"Bank Transfer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/affiliate/cashout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "affiliate", "cashout", ""]
+            }
+          }
+        },
+        {
+          "name": "Get All Affiliates (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/affiliate/all/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "affiliate", "all", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Affiliate Transactions (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/affiliate/{{affiliate_id}}/transactions/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "affiliate",
+                "{{affiliate_id}}",
+                "transactions",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/?page=1&limit=20&isRead=false",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "isRead",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/{{notification_id}}/read/",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "notifications",
+                "{{notification_id}}",
+                "read",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark All Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/mark-all-read/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", "mark-all-read", ""]
+            }
+          }
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/{{notification_id}}/delete/",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "notifications",
+                "{{notification_id}}",
+                "delete",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Notification (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"System Maintenance\",\n  \"message\": \"The system will be under maintenance tonight\",\n  \"type\": \"system_alert\",\n  \"targetAudience\": \"all\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notifications/admin/create/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", "admin", "create", ""]
+            }
+          }
+        },
+        {
+          "name": "Send Notification (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/admin/{{notification_id}}/send/",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api",
+                "notifications",
+                "admin",
+                "{{notification_id}}",
+                "send",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Admin Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/admin/list/?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", "admin", "list", ""],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "description": "Note: For real-time notifications, use WebSocket at ws://localhost:8000/ws/notifications/<user_id>/"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "user_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "affiliate_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "offer_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notification_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
