@@ -79,14 +79,14 @@ class ProductService:
         """Get products with filters and pagination"""
         # Show approved products, or unapproved products if user is the seller
         from mongoengine import Q
-        if user_id:
+        if user_id and user_id != 'None' and user_id.strip():
             from bson import ObjectId
             try:
                 user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
                 query = Product.objects(
                     Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
                 )
-            except:
+            except (Exception, ValueError):
                 query = Product.objects(status='active', approved=True)
         else:
             query = Product.objects(status='active', approved=True)
@@ -109,13 +109,25 @@ class ProductService:
             if filters.get('search'):
                 query = query.filter(title__icontains=filters['search'])
         
-        # Sorting
-        sort_by = filters.get('sortBy', 'newest')
-        if sort_by == 'price':
-            query = query.order_by('price')
-        elif sort_by == 'newest':
-            query = query.order_by('-created_at')
+        # Sorting - handle different sortBy options
+        sort_by = filters.get('sortBy', 'newest') if filters else 'newest'
+        if sort_by:
+            sort_by_lower = sort_by.lower().strip()
+            
+            if sort_by_lower in ['price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
+                query = query.order_by('price')
+            elif sort_by_lower in ['price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
+                query = query.order_by('-price')
+            elif sort_by_lower in ['newly listed', 'newest', 'new', 'newly-listed']:
+                query = query.order_by('-created_at')
+            elif sort_by_lower in ['relevance', 'relevant']:
+                # Relevance: sort by likes_count first, then by created_at
+                query = query.order_by('-likes_count', '-created_at')
+            else:
+                # Default: newest first
+                query = query.order_by('-created_at')
         else:
+            # Default: newest first
             query = query.order_by('-created_at')
         
         total = query.count()

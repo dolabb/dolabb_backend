@@ -14,6 +14,20 @@ from authentication.models import User
 @permission_classes([AllowAny])
 def get_products(request):
     """Get products with filters"""
+    # Get sortBy and normalize it
+    sort_by = request.GET.get('sortBy', 'newest')
+    # Normalize common variations
+    if sort_by:
+        sort_by_lower = sort_by.lower().strip()
+        if sort_by_lower in ['relevance', 'relevant']:
+            sort_by = 'relevance'
+        elif sort_by_lower in ['price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
+            sort_by = 'price: low to high'
+        elif sort_by_lower in ['price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
+            sort_by = 'price: high to low'
+        elif sort_by_lower in ['newly listed', 'newest', 'new', 'newly-listed']:
+            sort_by = 'newly listed'
+    
     filters = {
         'category': request.GET.get('category'),
         'subcategory': request.GET.get('subcategory'),
@@ -23,7 +37,7 @@ def get_products(request):
         'size': request.GET.get('size'),
         'condition': request.GET.get('condition'),
         'search': request.GET.get('search'),
-        'sortBy': request.GET.get('sortBy', 'newest')
+        'sortBy': sort_by
     }
     
     page = int(request.GET.get('page', 1))
@@ -31,31 +45,59 @@ def get_products(request):
     
     try:
         user_id = None
-        if hasattr(request.user, 'id'):
-            user_id = str(request.user.id)
+        if hasattr(request.user, 'id') and request.user.id:
+            try:
+                user_id = str(request.user.id)
+            except:
+                user_id = None
         
         products, total = ProductService.get_products(filters, page, limit, user_id)
         
         products_list = []
         for product in products:
             is_saved = False
-            if user_id:
-                saved = SavedProduct.objects(user_id=user_id, product_id=product.id).first()
-                is_saved = saved is not None
+            if user_id and user_id != 'None' and user_id.strip():
+                try:
+                    from bson import ObjectId
+                    user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                    saved = SavedProduct.objects(user_id=user_obj_id, product_id=product.id).first()
+                    is_saved = saved is not None
+                except:
+                    is_saved = False
             
-            seller = User.objects(id=product.seller_id.id).first()
+            # Handle seller_id safely
+            seller = None
+            if product.seller_id:
+                try:
+                    # Handle ReferenceField - seller_id might be an ObjectId or a User object
+                    from bson import ObjectId
+                    seller_obj_id = None
+                    if hasattr(product.seller_id, 'id'):
+                        seller_obj_id = product.seller_id.id
+                    elif isinstance(product.seller_id, ObjectId):
+                        seller_obj_id = product.seller_id
+                    elif isinstance(product.seller_id, str):
+                        seller_obj_id = ObjectId(product.seller_id)
+                    else:
+                        seller_obj_id = product.seller_id
+                    
+                    if seller_obj_id:
+                        seller = User.objects(id=seller_obj_id).first()
+                except:
+                    seller = None
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
-                'description': product.description,
+                'description': product.description or '',
                 'price': product.price,
-                'originalPrice': product.original_price,
-                'images': product.images,
+                'originalPrice': product.original_price or product.price,
+                'images': product.images or [],
                 'category': product.category,
-                'subcategory': product.subcategory,
-                'brand': product.brand,
-                'size': product.size,
-                'color': product.color,
+                'subcategory': product.subcategory or '',
+                'brand': product.brand or '',
+                'size': product.size or '',
+                'color': product.color or '',
                 'condition': product.condition,
                 'seller': {
                     'id': str(seller.id) if seller else '',
@@ -63,18 +105,11 @@ def get_products(request):
                     'profileImage': seller.profile_image if seller else ''
                 },
                 'isSaved': is_saved,
-                'createdAt': product.created_at.isoformat()
+                'createdAt': product.created_at.isoformat() if product.created_at else None
             })
         
-        return Response({
-            'products': products_list,
-            'pagination': {
-                'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
-                'totalItems': total,
-                'itemsPerPage': limit
-            }
-        }, status=status.HTTP_200_OK)
+        # Return products array directly
+        return Response(products_list, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
