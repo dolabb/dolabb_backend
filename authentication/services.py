@@ -54,10 +54,17 @@ class AuthService:
             admin.profile_image = profile_image_url
         admin.set_password(password)
         otp_code = admin.generate_otp(settings.OTP_EXPIRY_SECONDS)
-        admin.save()
         
-        # Send OTP email
-        send_otp_email(email, otp_code, name)
+        # Send email BEFORE saving to database
+        # If email fails, admin won't be saved
+        try:
+            send_otp_email(email, otp_code, name)
+        except Exception as e:
+            # Re-raise with more context
+            raise Exception(f"Failed to send OTP email. Please check your email configuration. Error: {str(e)}")
+        
+        # Only save admin if email was sent successfully
+        admin.save()
         
         return admin, otp_code
     
@@ -163,9 +170,17 @@ class AuthService:
         user.username = username
         user.set_password(password)
         otp_code = user.generate_otp(settings.OTP_EXPIRY_SECONDS)
-        user.save()
         
-        send_otp_email(email, otp_code, full_name)
+        # Send email BEFORE saving to database
+        # If email fails, user won't be saved
+        try:
+            send_otp_email(email, otp_code, full_name)
+        except Exception as e:
+            # Re-raise with more context
+            raise Exception(f"Failed to send OTP email. Please check your email configuration. Error: {str(e)}")
+        
+        # Only save user if email was sent successfully
+        user.save()
         
         # Don't generate token yet - wait for OTP verification
         return user, otp_code
@@ -294,9 +309,17 @@ class AuthService:
         affiliate.set_password(password)
         # Generate OTP for affiliate verification
         otp_code = affiliate.generate_otp(settings.OTP_EXPIRY_SECONDS)
-        affiliate.save()
         
-        send_otp_email(email, otp_code, full_name)
+        # Send email BEFORE saving to database
+        # If email fails, affiliate won't be saved
+        try:
+            send_otp_email(email, otp_code, full_name)
+        except Exception as e:
+            # Re-raise with more context
+            raise Exception(f"Failed to send OTP email. Please check your email configuration. Error: {str(e)}")
+        
+        # Only save affiliate if email was sent successfully
+        affiliate.save()
         
         # Don't generate token yet - wait for OTP verification
         return affiliate, otp_code
