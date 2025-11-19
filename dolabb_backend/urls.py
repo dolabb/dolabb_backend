@@ -2,10 +2,11 @@
 URL configuration for dolabb_backend project.
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from authentication.image_views import serve_media_file
 
 def api_root(request):
     """Root endpoint showing API information"""
@@ -44,7 +45,13 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
 ]
 
-# Serve media files in development
+# Serve media files - works in both development and production
 if settings.DEBUG:
+    # In development, use Django's static file serving
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # In production, use custom view to serve media files
+    urlpatterns += [
+        re_path(r'^media/(?P<file_path>.*)$', serve_media_file, name='serve_media'),
+    ]
 

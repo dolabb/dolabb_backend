@@ -9,6 +9,8 @@ from rest_framework import status
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.http import FileResponse, Http404
+from authentication.models import UploadedFile
 
 
 @api_view(['POST'])
@@ -59,11 +61,30 @@ def upload_image(request):
         file_url = f"{settings.MEDIA_URL}uploads/profiles/{unique_filename}"
         absolute_url = request.build_absolute_uri(file_url)
         
+        # Get user ID if authenticated
+        uploaded_by = None
+        if hasattr(request, 'user') and request.user and hasattr(request.user, 'id'):
+            uploaded_by = str(request.user.id)
+        
+        # Save file metadata to database
+        uploaded_file = UploadedFile(
+            filename=unique_filename,
+            original_filename=image_file.name,
+            file_path=file_path,
+            file_url=absolute_url,
+            file_size=str(image_file.size),
+            content_type=image_file.content_type,
+            upload_type='profile',
+            uploaded_by=uploaded_by
+        )
+        uploaded_file.save()
+        
         return Response({
             'success': True,
             'message': 'Image uploaded successfully',
             'image_url': absolute_url,
-            'filename': unique_filename
+            'filename': unique_filename,
+            'file_id': str(uploaded_file.id)
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
@@ -71,4 +92,39 @@ def upload_image(request):
             'success': False,
             'error': f'Failed to upload image: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def serve_media_file(request, file_path):
+    """Serve media files in production"""
+    try:
+        # Normalize the file path to prevent directory traversal attacks
+        file_path = os.path.normpath(file_path).lstrip('/\\')
+        
+        # Construct full file path
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        full_path = os.path.normpath(full_path)
+        media_root = os.path.normpath(os.path.abspath(settings.MEDIA_ROOT))
+        
+        # Security check: ensure the file is within MEDIA_ROOT (prevent directory traversal)
+        if not os.path.abspath(full_path).startswith(media_root):
+            raise Http404("File not found")
+        
+        # Check if file exists and is a file (not a directory)
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            raise Http404("File not found")
+        
+        # Determine content type
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(full_path)
+        if not content_type:
+            content_type = 'application/octet-stream'
+        
+        # Return file response (FileResponse handles file closing automatically)
+        file_handle = open(full_path, 'rb')
+        response = FileResponse(file_handle, content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{os.path.basename(full_path)}"'
+        return response
+        
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404("File not found")
 

@@ -213,3 +213,21 @@ class Affiliate(Document):
         """Required by Django REST Framework"""
         return True
 
+
+class UploadedFile(Document):
+    """Model to store uploaded file metadata"""
+    filename = StringField(required=True, max_length=500)
+    original_filename = StringField(max_length=500)
+    file_path = StringField(required=True, max_length=1000)
+    file_url = StringField(required=True, max_length=1000)
+    file_size = StringField()  # Store as string to avoid type issues
+    content_type = StringField(max_length=100)
+    upload_type = StringField(max_length=50, default='profile')  # profile, product, chat, etc.
+    uploaded_by = StringField(max_length=100)  # User ID or None for anonymous
+    created_at = DateTimeField(default=datetime.utcnow)
+    
+    meta = {
+        'collection': 'uploaded_files',
+        'indexes': ['filename', 'file_path', 'uploaded_by', 'created_at']
+    }
+
