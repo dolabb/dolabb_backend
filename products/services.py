@@ -247,12 +247,31 @@ class ProductService:
     @staticmethod
     def delete_product(product_id, seller_id):
         """Delete product"""
-        product = Product.objects(id=product_id, seller_id=seller_id).first()
+        from bson import ObjectId
+        
+        # Convert product_id and seller_id to ObjectId if needed
+        try:
+            if isinstance(product_id, str):
+                product_obj_id = ObjectId(product_id)
+            else:
+                product_obj_id = product_id
+            
+            if isinstance(seller_id, str):
+                seller_obj_id = ObjectId(seller_id)
+            else:
+                seller_obj_id = seller_id
+        except:
+            raise ValueError("Invalid ID format")
+        
+        product = Product.objects(id=product_obj_id, seller_id=seller_obj_id).first()
         if not product:
             raise ValueError("Product not found")
         
-        product.status = 'removed'
-        product.save()
+        # Delete related SavedProduct entries (wishlist items)
+        SavedProduct.objects(product_id=product_obj_id).delete()
+        
+        # Actually delete the product from database
+        product.delete()
         
         return product
     
