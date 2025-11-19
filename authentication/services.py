@@ -4,7 +4,7 @@ Authentication services
 import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
-from authentication.models import Admin, User, Affiliate
+from authentication.models import Admin, User, Affiliate, TempUser
 from authentication.email_service import send_otp_email
 
 
@@ -143,33 +143,43 @@ class AuthService:
         return admin
     
     @staticmethod
-    def user_signup(full_name, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer'):
-        """User signup"""
+    def user_signup(full_name, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='seller'):
+        """User signup - stores in temp_users until OTP verification"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
         
+        # Check if user already exists in users collection
         if User.objects(email=email).first():
             raise ValueError("User with this email already exists")
         
-        # Generate username from email
-        username = email.split('@')[0]
-        counter = 1
-        while User.objects(username=username).first():
-            username = f"{email.split('@')[0]}{counter}"
-            counter += 1
+        # Check if user already exists in temp_users collection
+        existing_temp = TempUser.objects(email=email).first()
+        if existing_temp:
+            # Update existing temp user instead of creating new one
+            temp_user = existing_temp
+            temp_user.full_name = full_name
+            temp_user.phone = phone
+            temp_user.country_code = country_code
+            temp_user.dial_code = dial_code
+            temp_user.profile_image = profile_image_url
+            temp_user.role = role
+            temp_user.set_password(password)
+        else:
+            # Create new temp user
+            temp_user = TempUser(
+                full_name=full_name,
+                email=email,
+                phone=phone,
+                country_code=country_code,
+                dial_code=dial_code,
+                profile_image=profile_image_url,
+                role=role,
+                status='pending_verification'
+            )
+            temp_user.set_password(password)
         
-        user = User(
-            full_name=full_name,
-            email=email,
-            phone=phone,
-            country_code=country_code,
-            dial_code=dial_code,
-            profile_image=profile_image_url,
-            role=role
-        )
-        user.username = username
-        user.set_password(password)
-        otp_code = user.generate_otp(settings.OTP_EXPIRY_SECONDS)
+        # Generate OTP
+        otp_code = temp_user.generate_otp(settings.OTP_EXPIRY_SECONDS)
         
         # Send email BEFORE saving to database
         # If email fails, user won't be saved
@@ -179,34 +189,82 @@ class AuthService:
             # Re-raise with more context
             raise Exception(f"Failed to send OTP email. Please check your email configuration. Error: {str(e)}")
         
-        # Only save user if email was sent successfully
-        user.save()
+        # Only save temp user if email was sent successfully
+        temp_user.save()
         
         # Don't generate token yet - wait for OTP verification
-        return user, otp_code
+        return temp_user, otp_code
     
     @staticmethod
     def user_verify_otp(email, otp):
-        """Verify user OTP"""
-        user = User.objects(email=email).first()
-        if not user:
+        """Verify user OTP - moves data from temp_users to users collection"""
+        # Check temp_users first
+        temp_user = TempUser.objects(email=email).first()
+        if not temp_user:
+            # Check if user is already verified
+            user = User.objects(email=email).first()
+            if user:
+                raise ValueError("User is already verified")
             raise ValueError("User not found")
         
-        if not user.verify_otp(otp):
+        if not temp_user.verify_otp(otp):
             raise ValueError("Invalid or expired OTP")
         
-        # Clear OTP after verification
-        user.otp = None
-        user.save()
+        # Check if user already exists in users (shouldn't happen, but safety check)
+        if User.objects(email=email).first():
+            # Delete temp entry and raise error
+            temp_user.delete()
+            raise ValueError("User already exists in verified users")
         
-        # Generate token after successful verification
-        token = JWTService.generate_token(user.id, 'user', user.email, user.role)
+        # Generate username from email
+        username = email.split('@')[0]
+        counter = 1
+        while User.objects(username=username).first():
+            username = f"{email.split('@')[0]}{counter}"
+            counter += 1
         
-        return user, token
+        # Create user in main users collection
+        user = User(
+            full_name=temp_user.full_name,
+            email=temp_user.email,
+            phone=temp_user.phone,
+            country_code=temp_user.country_code,
+            dial_code=temp_user.dial_code,
+            profile_image=temp_user.profile_image,
+            role=temp_user.role,
+            password_hash=temp_user.password_hash  # Copy hashed password
+        )
+        user.username = username
+        user.status = 'active'
+        
+        try:
+            # Save user to main collection
+            user.save()
+            
+            # Delete temp entry after successful save
+            temp_user.delete()
+            
+            # Generate token after successful verification
+            token = JWTService.generate_token(user.id, 'user', user.email, user.role)
+            
+            return user, token
+        except Exception as e:
+            # Rollback: if user save fails, don't delete temp entry
+            # If user was saved but temp delete fails, that's okay (temp will expire)
+            raise Exception(f"Failed to complete verification: {str(e)}")
     
     @staticmethod
     def user_login(email, password):
         """User login"""
+        # First check if user exists in temp_users (pending verification)
+        temp_user = TempUser.objects(email=email).first()
+        if temp_user:
+            if temp_user.check_password(password):
+                raise ValueError("Verification pending. Please verify your email with the OTP sent to your email address.")
+            else:
+                raise ValueError("Invalid credentials")
+        
+        # Check verified users
         user = User.objects(email=email).first()
         if not user or not user.check_password(password):
             raise ValueError("Invalid credentials")
@@ -219,23 +277,39 @@ class AuthService:
     
     @staticmethod
     def user_resend_otp(email):
-        """Resend OTP for user"""
-        user = User.objects(email=email).first()
-        if not user:
+        """Resend OTP for user - works with temp_users"""
+        # Check temp_users first
+        temp_user = TempUser.objects(email=email).first()
+        if not temp_user:
+            # Check if user is already verified
+            user = User.objects(email=email).first()
+            if user:
+                raise ValueError("User is already verified. Please login instead.")
             raise ValueError("User not found")
         
-        otp_code = user.generate_otp(settings.OTP_EXPIRY_SECONDS)
-        user.save()
+        # Generate new OTP
+        otp_code = temp_user.generate_otp(settings.OTP_EXPIRY_SECONDS)
+        temp_user.save()
         
-        send_otp_email(email, otp_code, user.full_name)
+        send_otp_email(email, otp_code, temp_user.full_name)
         return otp_code
     
     @staticmethod
     def user_forgot_password(email):
-        """User forgot password"""
+        """User forgot password - only verified users can reset password"""
+        # Check if user exists in temp_users (not verified)
+        temp_user = TempUser.objects(email=email).first()
+        if temp_user:
+            raise ValueError("Account verification pending. Please verify your email first before resetting password.")
+        
+        # Only verified users can reset password
         user = User.objects(email=email).first()
         if not user:
             raise ValueError("User not found")
+        
+        # Validate user status
+        if user.status != 'active':
+            raise ValueError("Account is suspended or deactivated. Cannot reset password.")
         
         otp_code = user.generate_otp(settings.OTP_EXPIRY_SECONDS)
         user.save()
@@ -245,22 +319,35 @@ class AuthService:
     
     @staticmethod
     def user_reset_password(email, otp, new_password, confirm_password):
-        """User reset password"""
+        """User reset password - only verified users can reset password"""
         if new_password != confirm_password:
             raise ValueError("Passwords do not match")
         
+        # Check if user exists in temp_users (not verified)
+        temp_user = TempUser.objects(email=email).first()
+        if temp_user:
+            raise ValueError("Account verification pending. Please verify your email first before resetting password.")
+        
+        # Only verified users can reset password
         user = User.objects(email=email).first()
         if not user:
             raise ValueError("User not found")
         
+        # Validate user status
+        if user.status != 'active':
+            raise ValueError("Account is suspended or deactivated. Cannot reset password.")
+        
         if not user.verify_otp(otp):
             raise ValueError("Invalid or expired OTP")
         
-        user.set_password(new_password)
-        user.otp = None
-        user.save()
-        
-        return user
+        try:
+            user.set_password(new_password)
+            user.otp = None
+            user.save()
+            return user
+        except Exception as e:
+            # Rollback: password change failed, don't clear OTP
+            raise Exception(f"Failed to reset password: {str(e)}")
     
     @staticmethod
     def affiliate_verify_otp(email, otp):
@@ -369,6 +456,29 @@ class AuthService:
                 },
                 'token': token
             }
+        else:
+            raise ValueError(f"Invalid user_type. Must be 'admin', 'user', or 'affiliate'")
+    
+    @staticmethod
+    def resend_otp_combined(email, user_type):
+        """Combined resend OTP for admin, user, and affiliate"""
+        user_type = user_type.lower()
+        
+        if user_type == 'admin':
+            otp = AuthService.admin_resend_otp(email)
+            return {'otp': otp}
+        elif user_type == 'user':
+            otp = AuthService.user_resend_otp(email)
+            return {'otp': otp}
+        elif user_type == 'affiliate':
+            # Affiliate resend OTP (if needed, implement similar to admin)
+            affiliate = Affiliate.objects(email=email).first()
+            if not affiliate:
+                raise ValueError("Affiliate not found")
+            otp_code = affiliate.generate_otp(settings.OTP_EXPIRY_SECONDS)
+            affiliate.save()
+            send_otp_email(email, otp_code, affiliate.full_name)
+            return {'otp': otp_code}
         else:
             raise ValueError(f"Invalid user_type. Must be 'admin', 'user', or 'affiliate'")
     

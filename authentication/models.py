@@ -62,6 +62,49 @@ class Admin(Document):
         return True
 
 
+class TempUser(Document):
+    """Temporary user model for storing unverified signup data"""
+    full_name = StringField(required=True, max_length=200)
+    email = EmailField(required=True, unique=True)
+    phone = StringField(max_length=20)
+    country_code = StringField(max_length=10)
+    dial_code = StringField(max_length=10)
+    password_hash = StringField(required=True)
+    profile_image = StringField()
+    role = StringField(required=True, choices=['buyer', 'seller'], default='seller')
+    status = StringField(default='pending_verification')
+    otp = EmbeddedDocumentField(OTPEmbedded)
+    created_at = DateTimeField(default=datetime.utcnow)
+    
+    meta = {
+        'collection': 'temp_users',
+        'indexes': ['email']
+    }
+    
+    def set_password(self, password):
+        """Hash and set password"""
+        self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    def check_password(self, password):
+        """Check password"""
+        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+    
+    def generate_otp(self, expiry_seconds=300):
+        """Generate OTP"""
+        code = str(secrets.randbelow(10000)).zfill(4)
+        expires_at = datetime.utcnow() + timedelta(seconds=expiry_seconds)
+        self.otp = OTPEmbedded(code=code, expires_at=expires_at)
+        return code
+    
+    def verify_otp(self, code):
+        """Verify OTP"""
+        if not self.otp:
+            return False
+        if datetime.utcnow() > self.otp.expires_at:
+            return False
+        return self.otp.code == code
+
+
 class User(Document):
     """User model for buyers and sellers"""
     full_name = StringField(required=True, max_length=200)
@@ -74,7 +117,7 @@ class User(Document):
     profile_image = StringField()
     bio = StringField(max_length=500)
     location = StringField(max_length=200)
-    role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
+    role = StringField(required=True, choices=['buyer', 'seller'], default='seller')
     status = StringField(choices=['active', 'suspended', 'deactivated'], default='active')
     otp = EmbeddedDocumentField(OTPEmbedded)
     join_date = DateTimeField(default=datetime.utcnow)
@@ -107,11 +150,6 @@ class User(Document):
         if datetime.utcnow() > self.otp.expires_at:
             return False
         return self.otp.code == code
-    
-    @property
-    def is_authenticated(self):
-        """Required by Django REST Framework"""
-        return True
     
     @property
     def is_authenticated(self):

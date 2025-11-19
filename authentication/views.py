@@ -135,7 +135,7 @@ def user_signup(request):
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        user, otp = AuthService.user_signup(
+        temp_user, otp = AuthService.user_signup(
             serializer.validated_data['full_name'],
             serializer.validated_data['email'],
             serializer.validated_data['phone'],
@@ -144,18 +144,18 @@ def user_signup(request):
             serializer.validated_data.get('country_code'),
             serializer.validated_data.get('dial_code'),
             serializer.validated_data.get('profile_image_url'),
-            serializer.validated_data.get('role', 'buyer')
+            serializer.validated_data.get('role', 'seller')
         )
         return Response({
             'success': True,
             'message': 'User registered successfully. OTP sent to email. Please verify OTP to complete registration.',
             'user': {
-                'id': str(user.id),
-                'username': user.username,
-                'email': user.email,
-                'phone': user.phone,
-                'profile_image': user.profile_image or '',
-                'role': user.role
+                'id': str(temp_user.id),
+                'email': temp_user.email,
+                'phone': temp_user.phone,
+                'profile_image': temp_user.profile_image or '',
+                'role': temp_user.role,
+                'status': temp_user.status
             },
             'otp': otp
         }, status=status.HTTP_201_CREATED)
