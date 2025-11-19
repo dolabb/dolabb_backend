@@ -11,8 +11,8 @@ def create_env_file():
         return
     
     env_content = """# Resend (email OTP)
-RESEND_API_KEY=re_GpJeG6m2_7XrfrArCDzQDSioMid4r4a74
-RESEND_FROM_EMAIL=onboarding@resend.dev
+RESEND_API_KEY=re_h7DXEMec_PXna1zyChxx7W5GLHLCe9QLJ
+RESEND_FROM_EMAIL=no-reply@dolabb.com
 
 # MongoDB
 MONGODB_CONNECTION_STRING=mongodb+srv://dolabb_admin:Farad2025%24@cluster0.0imvu6l.mongodb.net/dolabb_db?retryWrites=true&w=majority

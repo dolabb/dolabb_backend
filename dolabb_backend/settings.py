@@ -154,8 +154,10 @@ JWT_EXPIRES_IN = os.getenv('JWT_EXPIRES_IN', '1d')
 OTP_EXPIRY_SECONDS = int(os.getenv('OTP_EXPIRY_SECONDS', 300))
 
 # Resend Email Configuration
-RESEND_API_KEY = os.getenv('RESEND_API_KEY', 're_GpJeG6m2_7XrfrArCDzQDSioMid4r4a74')
-RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
+# Note: In production, these MUST be set via environment variables
+# Default values are for local development only
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', '')
 
 # Moyasar Payment Configuration
 MOYASAR_PUBLIC_KEY = os.getenv('MOYASAR_PUBLIC_KEY', '')

@@ -196,8 +196,31 @@ if not JWT_SECRET_KEY:
 JWT_EXPIRES_IN = os.getenv('JWT_EXPIRES_IN', '1d')  # Default: 1 day
 
 # Email Configuration (Resend)
+# These are REQUIRED in production - must be set via environment variables
 RESEND_API_KEY = os.getenv('RESEND_API_KEY')
-RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'noreply@example.com')
+if not RESEND_API_KEY:
+    raise ValueError(
+        "RESEND_API_KEY must be set in production environment. "
+        "Please add RESEND_API_KEY environment variable in Render dashboard. "
+        "Expected format: re_xxxxxxxxxxxxx"
+    )
+
+RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL')
+if not RESEND_FROM_EMAIL:
+    raise ValueError(
+        "RESEND_FROM_EMAIL must be set in production environment. "
+        "Please add RESEND_FROM_EMAIL environment variable in Render dashboard. "
+        "Expected format: no-reply@dolabb.com (must use verified domain)"
+    )
+
+# Validate FROM email uses verified domain
+if RESEND_FROM_EMAIL and '@dolabb.com' not in RESEND_FROM_EMAIL:
+    import warnings
+    warnings.warn(
+        f"RESEND_FROM_EMAIL ({RESEND_FROM_EMAIL}) does not use dolabb.com domain. "
+        "Ensure the domain is verified in Resend dashboard."
+    )
+
 OTP_EXPIRY_SECONDS = int(os.getenv('OTP_EXPIRY_SECONDS', 300))  # Default: 5 minutes
 
 # Moyasar Payment Gateway
