@@ -343,34 +343,42 @@ def delete_product(request, product_id):
 
 
 @api_view(['GET'])
-def get_seller_products(request, seller_id):
-    """Get products by seller"""
+def get_seller_products(request):
+    """Get products by authenticated seller"""
     try:
+        # Get seller_id from authenticated user token
+        seller_id = str(request.user.id)
+        
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 20))
+        status_filter = request.GET.get('status')  # Optional status filter
         
-        products, total = ProductService.get_seller_products(seller_id, None, page, limit)
+        products, total = ProductService.get_seller_products(seller_id, status_filter, page, limit)
         
         products_list = []
         for product in products:
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
-                'description': product.description,
+                'description': product.description or '',
                 'price': product.price,
-                'images': product.images,
+                'originalPrice': product.original_price or product.price,
+                'images': product.images or [],
+                'category': product.category,
+                'subcategory': product.subcategory or '',
+                'brand': product.brand or '',
+                'size': product.size or '',
+                'color': product.color or '',
+                'condition': product.condition,
                 'status': product.status,
-                'createdAt': product.created_at.isoformat()
+                'approved': product.approved,
+                'quantity': product.quantity,
+                'createdAt': product.created_at.isoformat() if product.created_at else None,
+                'updatedAt': product.updated_at.isoformat() if product.updated_at else None
             })
         
-        return Response({
-            'products': products_list,
-            'pagination': {
-                'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
-                'totalItems': total
-            }
-        }, status=status.HTTP_200_OK)
+        # Return products array directly
+        return Response(products_list, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

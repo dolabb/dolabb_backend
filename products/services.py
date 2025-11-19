@@ -290,10 +290,24 @@ class ProductService:
     @staticmethod
     def get_seller_products(seller_id, status=None, page=1, limit=20):
         """Get products by seller"""
-        query = Product.objects(seller_id=seller_id)
+        from bson import ObjectId
+        
+        # Convert seller_id to ObjectId if needed
+        try:
+            if isinstance(seller_id, str):
+                seller_obj_id = ObjectId(seller_id)
+            else:
+                seller_obj_id = seller_id
+        except (Exception, ValueError):
+            raise ValueError("Invalid seller ID format")
+        
+        query = Product.objects(seller_id=seller_obj_id)
         
         if status:
             query = query.filter(status=status)
+        
+        # Order by newest first
+        query = query.order_by('-created_at')
         
         total = query.count()
         skip = (page - 1) * limit
