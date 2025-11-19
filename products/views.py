@@ -355,8 +355,27 @@ def get_seller_products(request):
         
         products, total = ProductService.get_seller_products(seller_id, status_filter, page, limit)
         
+        # Get user_id for checking saved status (if authenticated)
+        user_id = None
+        if hasattr(request.user, 'id') and request.user.id:
+            try:
+                user_id = str(request.user.id)
+            except:
+                user_id = None
+        
         products_list = []
         for product in products:
+            # Check if product is saved by the current user
+            is_saved = False
+            if user_id and user_id != 'None' and user_id.strip():
+                try:
+                    from bson import ObjectId
+                    user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                    saved = SavedProduct.objects(user_id=user_obj_id, product_id=product.id).first()
+                    is_saved = saved is not None
+                except:
+                    is_saved = False
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -373,6 +392,7 @@ def get_seller_products(request):
                 'status': product.status,
                 'approved': product.approved,
                 'quantity': product.quantity,
+                'isSaved': is_saved,
                 'createdAt': product.created_at.isoformat() if product.created_at else None,
                 'updatedAt': product.updated_at.isoformat() if product.updated_at else None
             })
@@ -388,11 +408,12 @@ def save_product(request, product_id):
     """Save product to wishlist"""
     try:
         user_id = str(request.user.id)
-        is_saved, saved = ProductService.save_product(user_id, product_id)
+        was_newly_saved, saved = ProductService.save_product(user_id, product_id)
         
+        # Return True if product is saved (whether it was just saved or already saved)
         return Response({
             'success': True,
-            'isSaved': is_saved
+            'isSaved': True  # Product is now saved (or was already saved)
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

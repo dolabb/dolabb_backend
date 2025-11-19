@@ -6,6 +6,7 @@ from products.models import Product, SavedProduct, Offer, Order, ShippingInfo
 from authentication.models import User
 import random
 import string
+from bson import ObjectId
 
 
 class ProductService:
@@ -156,7 +157,7 @@ class ProductService:
         
         is_saved = False
         is_liked = False
-        if user_id:
+        if user_id and user_id != 'None' and user_id.strip():
             try:
                 # Convert user_id to ObjectId if it's a string
                 if isinstance(user_id, str):
@@ -166,9 +167,9 @@ class ProductService:
                 
                 saved = SavedProduct.objects(user_id=user_obj_id, product_id=product_obj_id).first()
                 is_saved = saved is not None
-            except:
+            except (Exception, ValueError):
                 # If user_id conversion fails, just skip saved check
-                pass
+                is_saved = False
         
         return product, is_saved, is_liked
     
@@ -318,18 +319,53 @@ class ProductService:
     @staticmethod
     def save_product(user_id, product_id):
         """Save product to wishlist"""
-        saved = SavedProduct.objects(user_id=user_id, product_id=product_id).first()
+        from bson import ObjectId
+        
+        # Convert user_id and product_id to ObjectId if needed
+        try:
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+            
+            if isinstance(product_id, str):
+                product_obj_id = ObjectId(product_id)
+            else:
+                product_obj_id = product_id
+        except (Exception, ValueError):
+            raise ValueError("Invalid ID format")
+        
+        # Check if already saved
+        saved = SavedProduct.objects(user_id=user_obj_id, product_id=product_obj_id).first()
         if saved:
             return False, saved
         
-        saved = SavedProduct(user_id=user_id, product_id=product_id)
+        # Create new saved product entry
+        saved = SavedProduct(user_id=user_obj_id, product_id=product_obj_id)
         saved.save()
         return True, saved
     
     @staticmethod
     def unsave_product(user_id, product_id):
         """Remove product from wishlist"""
-        saved = SavedProduct.objects(user_id=user_id, product_id=product_id).first()
+        from bson import ObjectId
+        
+        # Convert user_id and product_id to ObjectId if needed
+        try:
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+            
+            if isinstance(product_id, str):
+                product_obj_id = ObjectId(product_id)
+            else:
+                product_obj_id = product_id
+        except (Exception, ValueError):
+            raise ValueError("Invalid ID format")
+        
+        # Find and delete saved product
+        saved = SavedProduct.objects(user_id=user_obj_id, product_id=product_obj_id).first()
         if saved:
             saved.delete()
             return True
@@ -568,4 +604,51 @@ class OrderService:
         order.save()
         
         return order
+    
+    @staticmethod
+    def get_saved_products(user_id):
+        """Get saved products for a user (for login response)"""
+        try:
+            # Convert user_id to ObjectId if needed
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+        except (Exception, ValueError):
+            return []
+        
+        # Get all saved products for this user
+        saved_products = SavedProduct.objects(user_id=user_obj_id)
+        
+        saved_products_list = []
+        for saved in saved_products:
+            try:
+                # Handle ReferenceField - product_id might be an ObjectId or a Product object
+                product_obj_id = None
+                if hasattr(saved.product_id, 'id'):
+                    product_obj_id = saved.product_id.id
+                elif isinstance(saved.product_id, ObjectId):
+                    product_obj_id = saved.product_id
+                elif isinstance(saved.product_id, str):
+                    product_obj_id = ObjectId(saved.product_id)
+                else:
+                    product_obj_id = saved.product_id
+                
+                # Get the product
+                product = Product.objects(id=product_obj_id).first()
+                if product:
+                    # Get first image or empty string
+                    image = product.images[0] if product.images and len(product.images) > 0 else ''
+                    
+                    saved_products_list.append({
+                        'id': str(product.id),
+                        'name': product.title,
+                        'price': product.price,
+                        'image': image
+                    })
+            except:
+                # Skip if product not found or error
+                continue
+        
+        return saved_products_list
 

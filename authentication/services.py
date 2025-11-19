@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from django.conf import settings
 from authentication.models import Admin, User, Affiliate, TempUser
 from authentication.email_service import send_otp_email
+from products.services import ProductService
 
 
 class JWTService:
@@ -437,8 +438,16 @@ class AuthService:
                     'username': user.username,
                     'email': user.email,
                     'phone': user.phone,
+                    'full_name': user.full_name,
                     'profile_image': user.profile_image or '',
-                    'role': user.role
+                    'role': user.role,
+                    'bio': user.bio or '',
+                    'location': user.location or '',
+                    'country_code': user.country_code or '',
+                    'dial_code': user.dial_code or '',
+                    'status': user.status,
+                    'join_date': user.join_date.isoformat() if user.join_date else None,
+                    'created_at': user.created_at.isoformat() if user.created_at else None
                 },
                 'token': token
             }
