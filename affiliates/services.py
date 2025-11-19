@@ -53,18 +53,20 @@ class AffiliateService:
                 '_id': str(affiliate.id),
                 'Affiliatename': affiliate.full_name,
                 'Affiliateemail': affiliate.email,
-                'commissionRate': affiliate.commission_rate,
-                'codeUsageCount': affiliate.code_usage_count,
+                'affiliateCode': affiliate.affiliate_code,
+                'commissionRate': float(affiliate.commission_rate) if affiliate.commission_rate else 0.0,
+                'codeUsageCount': int(affiliate.code_usage_count) if affiliate.code_usage_count else 0,
                 'Earnings': {
-                    'Total': affiliate.total_earnings,
-                    'Pending': affiliate.pending_earnings,
-                    'Paid': affiliate.paid_earnings
+                    'Total': float(affiliate.total_earnings) if affiliate.total_earnings else 0.0,
+                    'Pending': float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0,
+                    'Paid': float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
                 },
                 'Affiliatestatus': affiliate.status,
-                'Last Activity': affiliate.last_activity.isoformat(),
+                'Last Activity': affiliate.last_activity.isoformat() if affiliate.last_activity else None,
                 'stats': {
                     'totalReferrals': total_referrals,
-                    'totalEarnings': float(affiliate.total_earnings or 0)
+                    'totalEarnings': float(affiliate.total_earnings or 0),
+                    'totalTransactions': total_referrals
                 }
             })
         

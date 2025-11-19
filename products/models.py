@@ -100,6 +100,9 @@ class Order(Document):
     shipping_cost = FloatField(default=0.0)
     total_price = FloatField(required=True)
     dolabb_fee = FloatField(default=0.0)
+    affiliate_code = StringField(max_length=50)  # Affiliate code used in order
+    affiliate_commission = FloatField(default=0.0)  # Commission paid to affiliate (25% of platform fee)
+    seller_payout = FloatField(default=0.0)  # Amount seller receives after fees
     delivery_address = StringField()
     full_name = StringField()
     phone = StringField()

@@ -77,7 +77,7 @@ def get_user_orders(request):
                     'profileImage': buyer.profile_image if buyer else ''
                 }
             
-            orders_list.append({
+            order_data = {
                 'id': str(order.id),
                 'orderNumber': order.order_number,
                 'product': {
@@ -99,7 +99,15 @@ def get_user_orders(request):
                     'additionalInfo': order.additional_info
                 },
                 'trackingNumber': order.tracking_number or ''
-            })
+            }
+            
+            # Add seller payout information for sellers
+            if user_type == 'seller':
+                order_data['platformFee'] = order.dolabb_fee
+                order_data['sellerPayout'] = order.seller_payout
+                order_data['affiliateCode'] = order.affiliate_code or ''
+            
+            orders_list.append(order_data)
         
         return Response({
             'payments' if user_type == 'seller' else 'orders': orders_list,

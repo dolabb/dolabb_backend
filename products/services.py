@@ -546,6 +546,68 @@ class OrderService:
     """Order service"""
     
     @staticmethod
+    def calculate_platform_fee(order_amount):
+        """
+        Calculate platform fee based on order amount using configurable settings
+        Rules:
+        - Minimum fee (for amounts <= threshold_amount_1)
+        - Fee percentage (for amounts > threshold_amount_1 and <= threshold_amount_2)
+        - Maximum fee (for amounts > threshold_amount_2)
+        """
+        from admin_dashboard.models import FeeSettings
+        
+        # Get fee settings from database
+        settings = FeeSettings.objects().first()
+        if not settings:
+            # Use defaults if settings don't exist
+            minimum_fee = 5.0
+            fee_percentage = 5.0
+            threshold_1 = 100.0
+            threshold_2 = 2000.0
+            maximum_fee = 100.0
+        else:
+            minimum_fee = settings.minimum_fee
+            fee_percentage = settings.fee_percentage
+            threshold_1 = settings.threshold_amount_1
+            threshold_2 = settings.threshold_amount_2
+            maximum_fee = settings.maximum_fee
+        
+        if order_amount <= threshold_1:
+            return round(minimum_fee, 2)
+        elif order_amount <= threshold_2:
+            return round(order_amount * (fee_percentage / 100.0), 2)
+        else:
+            return round(maximum_fee, 2)
+    
+    @staticmethod
+    def calculate_affiliate_commission(platform_fee, affiliate=None):
+        """
+        Calculate affiliate commission based on affiliate's commission rate or default
+        If affiliate has individual commission rate (and it's not '0'), use it; otherwise use default from settings
+        """
+        from admin_dashboard.models import FeeSettings
+        
+        # Get default commission percentage from settings
+        settings = FeeSettings.objects().first()
+        if settings:
+            default_commission_percentage = settings.default_affiliate_commission_percentage
+        else:
+            default_commission_percentage = 25.0  # Default 25%
+        
+        # Use affiliate's individual commission rate if available and valid, otherwise use default
+        commission_percentage = default_commission_percentage
+        if affiliate and affiliate.commission_rate:
+            try:
+                affiliate_rate = float(affiliate.commission_rate)
+                # Only use affiliate's rate if it's greater than 0 (0 means use default)
+                if affiliate_rate > 0:
+                    commission_percentage = affiliate_rate
+            except (ValueError, TypeError):
+                pass  # Use default if conversion fails
+        
+        return round(platform_fee * (commission_percentage / 100.0), 2)
+    
+    @staticmethod
     def generate_order_number():
         """Generate unique order number"""
         return f"ORD-{''.join(random.choices(string.ascii_uppercase + string.digits, k=10))}"
@@ -561,6 +623,15 @@ class OrderService:
         while Order.objects(order_number=order_number).first():
             order_number = OrderService.generate_order_number()
         
+        # Get affiliate code if provided
+        affiliate_code = data.get('affiliateCode', '').strip() if data.get('affiliateCode') else None
+        affiliate = None
+        if affiliate_code:
+            from authentication.models import Affiliate
+            affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
+            if not affiliate:
+                affiliate_code = None  # Invalid affiliate code, ignore it
+        
         if 'offerId' in data and data['offerId']:
             # Order from offer
             offer = Offer.objects(id=data['offerId']).first()
@@ -568,20 +639,9 @@ class OrderService:
                 raise ValueError("Invalid offer")
             
             product = Product.objects(id=offer.product_id.id).first()
-            order = Order(
-                order_number=order_number,
-                buyer_id=buyer_id,
-                buyer_name=buyer.full_name,
-                seller_id=offer.seller_id.id,
-                seller_name=offer.seller_name,
-                product_id=offer.product_id.id,
-                product_title=product.title,
-                offer_id=offer.id,
-                price=offer.original_price,
-                offer_price=offer.offer_amount,
-                shipping_cost=offer.shipping_cost,
-                total_price=offer.offer_amount + offer.shipping_cost
-            )
+            base_amount = offer.offer_amount
+            shipping = offer.shipping_cost
+            subtotal = base_amount + shipping
         else:
             # Order from cart (simplified - single product for now)
             product_id = data['cartItems'][0] if data.get('cartItems') else None
@@ -593,6 +653,45 @@ class OrderService:
                 raise ValueError("Product not found")
             
             seller = User.objects(id=product.seller_id.id).first()
+            base_amount = product.price
+            shipping = product.shipping_cost
+            subtotal = base_amount + shipping
+        
+        # Calculate platform fee (based on base amount, not including shipping)
+        platform_fee = OrderService.calculate_platform_fee(base_amount)
+        
+        # Calculate affiliate commission (using affiliate's individual rate or default)
+        affiliate_commission = 0.0
+        if affiliate and affiliate_code:
+            affiliate_commission = OrderService.calculate_affiliate_commission(platform_fee, affiliate)
+        
+        # Calculate seller payout (subtotal - platform fee)
+        seller_payout = subtotal - platform_fee
+        
+        # Total price includes everything (buyer pays: base + shipping + platform fee)
+        total_price = base_amount + shipping + platform_fee
+        
+        # Create order
+        if 'offerId' in data and data['offerId']:
+            order = Order(
+                order_number=order_number,
+                buyer_id=buyer_id,
+                buyer_name=buyer.full_name,
+                seller_id=offer.seller_id.id,
+                seller_name=offer.seller_name,
+                product_id=offer.product_id.id,
+                product_title=product.title,
+                offer_id=offer.id,
+                price=offer.original_price,
+                offer_price=offer.offer_amount,
+                shipping_cost=shipping,
+                total_price=total_price,
+                dolabb_fee=platform_fee,
+                affiliate_code=affiliate_code,
+                affiliate_commission=affiliate_commission,
+                seller_payout=seller_payout
+            )
+        else:
             order = Order(
                 order_number=order_number,
                 buyer_id=buyer_id,
@@ -601,9 +700,13 @@ class OrderService:
                 seller_name=seller.full_name,
                 product_id=product_id,
                 product_title=product.title,
-                price=product.price,
-                shipping_cost=product.shipping_cost,
-                total_price=product.price + product.shipping_cost
+                price=base_amount,
+                shipping_cost=shipping,
+                total_price=total_price,
+                dolabb_fee=platform_fee,
+                affiliate_code=affiliate_code,
+                affiliate_commission=affiliate_commission,
+                seller_payout=seller_payout
             )
         
         # Add delivery address
@@ -617,6 +720,54 @@ class OrderService:
         order.additional_info = address.get('additionalInfo', '')
         
         order.save()
+        
+        # Update affiliate statistics if affiliate code was used
+        if affiliate and affiliate_code and affiliate_commission > 0:
+            try:
+                # Update code usage count
+                current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
+                affiliate.code_usage_count = str(current_count + 1)
+                
+                # Update total earnings
+                current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+                affiliate.total_earnings = str(round(current_earnings + affiliate_commission, 2))
+                
+                # Update pending earnings
+                current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+                affiliate.pending_earnings = str(round(current_pending + affiliate_commission, 2))
+                
+                affiliate.last_activity = datetime.utcnow()
+                affiliate.save()
+                
+                # Create affiliate transaction record
+                from affiliates.models import AffiliateTransaction
+                from admin_dashboard.models import FeeSettings
+                
+                # Get the commission rate that was used
+                settings = FeeSettings.objects().first()
+                if affiliate and affiliate.commission_rate:
+                    try:
+                        used_commission_rate = float(affiliate.commission_rate)
+                    except (ValueError, TypeError):
+                        used_commission_rate = settings.default_affiliate_commission_percentage if settings else 25.0
+                else:
+                    used_commission_rate = settings.default_affiliate_commission_percentage if settings else 25.0
+                
+                transaction = AffiliateTransaction(
+                    affiliate_id=affiliate.id,
+                    affiliate_name=affiliate.full_name,
+                    referred_user_id=buyer_id,
+                    referred_user_name=buyer.full_name,
+                    transaction_id=order.id,
+                    commission_rate=used_commission_rate,  # Store the actual rate used
+                    commission_amount=affiliate_commission,
+                    status='pending'
+                )
+                transaction.save()
+            except Exception as e:
+                # Log error but don't fail the order creation
+                import logging
+                logging.error(f"Failed to update affiliate statistics: {str(e)}")
         
         return order
     

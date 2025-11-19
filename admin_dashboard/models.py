@@ -9,8 +9,19 @@ from products.models import Product, Order, Offer
 
 class FeeSettings(Document):
     """Fee settings model"""
-    dolabb_fee_percentage = FloatField(default=5.0)
+    # Platform fee settings
+    minimum_fee = FloatField(default=5.0)  # Minimum SAR 5
+    fee_percentage = FloatField(default=5.0)  # 5% fee
+    threshold_amount_1 = FloatField(default=100.0)  # SAR 100 threshold
+    threshold_amount_2 = FloatField(default=2000.0)  # SAR 2000 threshold
+    maximum_fee = FloatField(default=100.0)  # Maximum SAR 100 (5% of 2000)
+    
+    # Transaction fee (if needed separately)
     transaction_fee_fixed = FloatField(default=0.0)
+    
+    # Default affiliate commission percentage (25% of platform fee)
+    default_affiliate_commission_percentage = FloatField(default=25.0)
+    
     updated_at = DateTimeField(default=datetime.utcnow)
     
     meta = {

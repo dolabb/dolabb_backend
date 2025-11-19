@@ -362,15 +362,26 @@ def update_fee_settings(request):
         return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        dolabb_fee_percentage = request.data.get('Dolabb Fee Percentage')
-        transaction_fee_fixed = request.data.get('Transaction Fee (Fixed Amount $)')
-        
-        settings = FeeSettingsService.update_fee_settings(dolabb_fee_percentage, transaction_fee_fixed)
+        settings = FeeSettingsService.update_fee_settings(
+            minimum_fee=request.data.get('minimumFee'),
+            fee_percentage=request.data.get('feePercentage'),
+            threshold_amount_1=request.data.get('thresholdAmount1'),
+            threshold_amount_2=request.data.get('thresholdAmount2'),
+            maximum_fee=request.data.get('maximumFee'),
+            transaction_fee_fixed=request.data.get('transactionFeeFixed'),
+            default_affiliate_commission_percentage=request.data.get('defaultAffiliateCommissionPercentage')
+        )
         
         return Response({
             'success': True,
-            'Dolabb Fee Percentage': settings.dolabb_fee_percentage,
-            'Transaction Fee (Fixed Amount $)': settings.transaction_fee_fixed
+            'minimumFee': settings.minimum_fee,
+            'feePercentage': settings.fee_percentage,
+            'thresholdAmount1': settings.threshold_amount_1,
+            'thresholdAmount2': settings.threshold_amount_2,
+            'maximumFee': settings.maximum_fee,
+            'transactionFeeFixed': settings.transaction_fee_fixed,
+            'defaultAffiliateCommissionPercentage': settings.default_affiliate_commission_percentage,
+            'updatedAt': settings.updated_at.isoformat() if settings.updated_at else None
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

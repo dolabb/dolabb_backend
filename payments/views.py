@@ -25,6 +25,8 @@ def checkout(request):
                 'price': order.price,
                 'offerPrice': order.offer_price,
                 'shipping': order.shipping_cost,
+                'platformFee': order.dolabb_fee,
+                'affiliateCode': order.affiliate_code or '',
                 'total': order.total_price
             }
         }, status=status.HTTP_201_CREATED)

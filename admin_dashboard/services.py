@@ -22,9 +22,12 @@ class DashboardService:
         total_sales = Order.objects(status__in=['ready', 'shipped', 'delivered']).count()
         total_transactions = Order.objects.count()
         
-        # Calculate total revenue
+        # Calculate total revenue and fees
         completed_orders = Order.objects(payment_status='completed')
         total_revenue = sum(order.total_price for order in completed_orders)
+        total_platform_fees = sum(order.dolabb_fee for order in completed_orders)
+        total_affiliate_commissions = sum(order.affiliate_commission for order in completed_orders)
+        total_seller_payouts = sum(order.seller_payout for order in completed_orders)
         
         pending_cashouts = CashoutRequest.objects(status='pending').count()
         open_disputes = Dispute.objects(status='open').count()
@@ -45,6 +48,9 @@ class DashboardService:
             'Total Sales': total_sales,
             'totalTransactions': total_transactions,
             'totalRevenue': total_revenue,
+            'totalPlatformFees': total_platform_fees,
+            'totalAffiliateCommissions': total_affiliate_commissions,
+            'totalSellerPayouts': total_seller_payouts,
             'pendingCashouts': pending_cashouts,
             'recentActivities': activities_list,
             'Open Disputes': open_disputes,
@@ -426,21 +432,45 @@ class FeeSettingsService:
             settings.save()
         
         return {
-            'Dolabb Fee Percentage': settings.dolabb_fee_percentage,
-            'Transaction Fee (Fixed Amount $)': settings.transaction_fee_fixed
+            'minimumFee': settings.minimum_fee,
+            'feePercentage': settings.fee_percentage,
+            'thresholdAmount1': settings.threshold_amount_1,
+            'thresholdAmount2': settings.threshold_amount_2,
+            'maximumFee': settings.maximum_fee,
+            'transactionFeeFixed': settings.transaction_fee_fixed,
+            'defaultAffiliateCommissionPercentage': settings.default_affiliate_commission_percentage,
+            'updatedAt': settings.updated_at.isoformat() if settings.updated_at else None
         }
     
     @staticmethod
-    def update_fee_settings(dolabb_fee_percentage=None, transaction_fee_fixed=None):
+    def update_fee_settings(
+        minimum_fee=None,
+        fee_percentage=None,
+        threshold_amount_1=None,
+        threshold_amount_2=None,
+        maximum_fee=None,
+        transaction_fee_fixed=None,
+        default_affiliate_commission_percentage=None
+    ):
         """Update fee settings"""
         settings = FeeSettings.objects().first()
         if not settings:
             settings = FeeSettings()
         
-        if dolabb_fee_percentage is not None:
-            settings.dolabb_fee_percentage = float(dolabb_fee_percentage)
+        if minimum_fee is not None:
+            settings.minimum_fee = float(minimum_fee)
+        if fee_percentage is not None:
+            settings.fee_percentage = float(fee_percentage)
+        if threshold_amount_1 is not None:
+            settings.threshold_amount_1 = float(threshold_amount_1)
+        if threshold_amount_2 is not None:
+            settings.threshold_amount_2 = float(threshold_amount_2)
+        if maximum_fee is not None:
+            settings.maximum_fee = float(maximum_fee)
         if transaction_fee_fixed is not None:
             settings.transaction_fee_fixed = float(transaction_fee_fixed)
+        if default_affiliate_commission_percentage is not None:
+            settings.default_affiliate_commission_percentage = float(default_affiliate_commission_percentage)
         
         settings.updated_at = datetime.utcnow()
         settings.save()
