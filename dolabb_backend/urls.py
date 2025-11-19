@@ -13,6 +13,7 @@ def api_root(request):
         'message': 'Dolabb Backend API is running',
         'version': '1.0.0',
         'status': 'active',
+        'base_url': 'https://dolabb-backend-2vsj.onrender.com',
         'endpoints': {
             'authentication': '/api/auth/',
             'admin_dashboard': '/api/admin/',
@@ -24,6 +25,8 @@ def api_root(request):
             'affiliate': '/api/affiliate/',
             'notifications': '/api/notifications/',
             'admin_panel': '/admin/',
+            'websocket_chat': '/ws/chat/{conversation_id}/',
+            'websocket_notifications': '/ws/notifications/{user_id}/',
         }
     })
 

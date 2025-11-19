@@ -9,7 +9,7 @@ PYTHON_VERSION=3.11.0
 DJANGO_SETTINGS_MODULE=dolabb_backend.settings_production
 SECRET_KEY=your-django-secret-key-here
 DEBUG=False
-ALLOWED_HOSTS=your-app-name.onrender.com
+ALLOWED_HOSTS=dolabb-backend-2vsj.onrender.com
 MONGODB_CONNECTION_STRING=your-mongodb-connection-string-here
 JWT_SECRET_KEY=your-jwt-secret-key-here
 
@@ -17,8 +17,8 @@ JWT_SECRET_KEY=your-jwt-secret-key-here
 # OPTIONAL VARIABLES (Recommended)
 # ============================================
 
-RESEND_API_KEY=your-resend-api-key-here
-RESEND_FROM_EMAIL=noreply@yourdomain.com
+RESEND_API_KEY=re_h7DXEMec_PXna1zyChxx7W5GLHLCe9QLJ
+RESEND_FROM_EMAIL=no-reply@dolabb.com
 MOYASAR_SECRET_KEY=your-moyasar-secret-key-here
 MOYASAR_PUBLISHABLE_KEY=your-moyasar-publishable-key-here
 CORS_ALLOWED_ORIGINS=https://your-frontend.com
@@ -27,9 +27,9 @@ CORS_ALLOWED_ORIGINS=https://your-frontend.com
 # REDIS - Upstash Redis (For WebSockets)
 # ============================================
 
-REDIS_URL=rediss://default:AWi-AAIncDIzYjhjMWRhMzg1MmU0MjIwYmRjMzY4MGM3OTQ1NTNiYXAyMjY4MTQ@communal-wombat-26814.upstash.io:6379
-UPSTASH_REDIS_REST_URL=https://communal-wombat-26814.upstash.io
-UPSTASH_REDIS_REST_TOKEN=AWi-AAIncDIzYjhjMWRhMzg1MmU0MjIwYmRjMzY4MGM3OTQ1NTNiYXAyMjY4MTQ
+REDIS_URL=rediss://default:AZfOAAIncDJlYzkzNTZmZTlkMGM0N2MzOTc3ZjYwMTJmYTI5ZjRlNXAyMzg4NjI@smart-grackle-38862.upstash.io:6379
+UPSTASH_REDIS_REST_URL=https://smart-grackle-38862.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AZfOAAIncDJlYzkzNTZmZTlkMGM0N2MzOTc3ZjYwMTJmYTI5ZjRlNXAyMzg4NjI
 
 # ============================================
 # SECURITY SETTINGS (Optional)

@@ -1,7 +1,7 @@
 # Django Settings
 SECRET_KEY=_kq%$1v06y5vj%7a=@4m@0()*mkn3(dyni%3@9d5vkup+ggb_g
 DEBUG=False
-ALLOWED_HOSTS=dolabb-backend.onrender.com
+ALLOWED_HOSTS=dolabb-backend-2vsj.onrender.com
 DJANGO_SETTINGS_MODULE=dolabb_backend.settings_production
 
 # MongoDB Connection String
@@ -12,8 +12,8 @@ MONGODB_CONNECTION_STRING=your_mongodb_connection_string_here
 JWT_SECRET_KEY=&bfztgn^+&j78ufa00(5vcv+z)ykg4bhym)ef@jg9q#z7464!%
 
 # Email Configuration (Resend)
-RESEND_API_KEY=your_resend_api_key_here
-RESEND_FROM_EMAIL=noreply@yourdomain.com
+RESEND_API_KEY=re_h7DXEMec_PXna1zyChxx7W5GLHLCe9QLJ
+RESEND_FROM_EMAIL=no-reply@dolabb.com
 OTP_EXPIRY_SECONDS=300
 
 # Moyasar Payment Gateway
@@ -22,11 +22,11 @@ MOYASAR_PUBLISHABLE_KEY=your_moyasar_publishable_key_here
 
 # Redis Configuration (Upstash Redis)
 # Use full Redis URL for Upstash
-REDIS_URL=rediss://default:AWi-AAIncDIzYjhjMWRhMzg1MmU0MjIwYmRjMzY4MGM3OTQ1NTNiYXAyMjY4MTQ@communal-wombat-26814.upstash.io:6379
+REDIS_URL=rediss://default:AZfOAAIncDJlYzkzNTZmZTlkMGM0N2MzOTc3ZjYwMTJmYTI5ZjRlNXAyMzg4NjI@smart-grackle-38862.upstash.io:6379
 
 # Upstash Redis REST API (Optional - for REST API access)
-UPSTASH_REDIS_REST_URL=https://communal-wombat-26814.upstash.io
-UPSTASH_REDIS_REST_TOKEN=AWi-AAIncDIzYjhjMWRhMzg1MmU0MjIwYmRjMzY4MGM3OTQ1NTNiYXAyMjY4MTQ
+UPSTASH_REDIS_REST_URL=https://smart-grackle-38862.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AZfOAAIncDJlYzkzNTZmZTlkMGM0N2MzOTc3ZjYwMTJmYTI5ZjRlNXAyMzg4NjI
 
 # CORS Allowed Origins (comma-separated)
 CORS_ALLOWED_ORIGINS=http://68.178.161.175,https://68.178.161.175
