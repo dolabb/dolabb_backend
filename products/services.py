@@ -372,6 +372,53 @@ class ProductService:
         return False
     
     @staticmethod
+    def get_saved_products(user_id):
+        """Get saved products for a user (for login response)"""
+        try:
+            # Convert user_id to ObjectId if needed
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+        except (Exception, ValueError):
+            return []
+        
+        # Get all saved products for this user
+        saved_products = SavedProduct.objects(user_id=user_obj_id)
+        
+        saved_products_list = []
+        for saved in saved_products:
+            try:
+                # Handle ReferenceField - product_id might be an ObjectId or a Product object
+                product_obj_id = None
+                if hasattr(saved.product_id, 'id'):
+                    product_obj_id = saved.product_id.id
+                elif isinstance(saved.product_id, ObjectId):
+                    product_obj_id = saved.product_id
+                elif isinstance(saved.product_id, str):
+                    product_obj_id = ObjectId(saved.product_id)
+                else:
+                    product_obj_id = saved.product_id
+                
+                # Get the product
+                product = Product.objects(id=product_obj_id).first()
+                if product:
+                    # Get first image or empty string
+                    image = product.images[0] if product.images and len(product.images) > 0 else ''
+                    
+                    saved_products_list.append({
+                        'id': str(product.id),
+                        'name': product.title,
+                        'price': product.price,
+                        'image': image
+                    })
+            except:
+                # Skip if product not found or error
+                continue
+        
+        return saved_products_list
+    
+    @staticmethod
     def get_featured_products(limit=10, page=1, user_id=None):
         """Get featured products"""
         from mongoengine import Q
@@ -604,51 +651,4 @@ class OrderService:
         order.save()
         
         return order
-    
-    @staticmethod
-    def get_saved_products(user_id):
-        """Get saved products for a user (for login response)"""
-        try:
-            # Convert user_id to ObjectId if needed
-            if isinstance(user_id, str):
-                user_obj_id = ObjectId(user_id)
-            else:
-                user_obj_id = user_id
-        except (Exception, ValueError):
-            return []
-        
-        # Get all saved products for this user
-        saved_products = SavedProduct.objects(user_id=user_obj_id)
-        
-        saved_products_list = []
-        for saved in saved_products:
-            try:
-                # Handle ReferenceField - product_id might be an ObjectId or a Product object
-                product_obj_id = None
-                if hasattr(saved.product_id, 'id'):
-                    product_obj_id = saved.product_id.id
-                elif isinstance(saved.product_id, ObjectId):
-                    product_obj_id = saved.product_id
-                elif isinstance(saved.product_id, str):
-                    product_obj_id = ObjectId(saved.product_id)
-                else:
-                    product_obj_id = saved.product_id
-                
-                # Get the product
-                product = Product.objects(id=product_obj_id).first()
-                if product:
-                    # Get first image or empty string
-                    image = product.images[0] if product.images and len(product.images) > 0 else ''
-                    
-                    saved_products_list.append({
-                        'id': str(product.id),
-                        'name': product.title,
-                        'price': product.price,
-                        'image': image
-                    })
-            except:
-                # Skip if product not found or error
-                continue
-        
-        return saved_products_list
 
