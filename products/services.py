@@ -42,8 +42,9 @@ class ProductService:
             original_price=float(data.get('originalPrice', data['price'])),
             currency=data.get('currency', 'SAR'),
             quantity=int(data.get('Quantity', 1)),
-            gender=data.get('Gender', ''),
+            gender=data.get('Gender', data.get('gender', '')),
             size=data.get('Size', ''),
+            color=data.get('Color', ''),
             condition=data.get('Condition', 'good'),
             sku=data.get('SKU/ID (Optional)', ''),
             tags=data.get('Tags/Keywords', []),
@@ -203,6 +204,8 @@ class ProductService:
             product.quantity = int(data['Quantity'])
         if 'Gender' in data:
             product.gender = data['Gender']
+        elif 'gender' in data:
+            product.gender = data['gender']
         if 'Size' in data:
             product.size = data['Size']
         if 'Color' in data:
