@@ -229,6 +229,8 @@ class ProductService:
             product.currency = data['currency']
         if 'Quantity' in data:
             product.quantity = int(data['Quantity'])
+        elif 'quantity' in data:
+            product.quantity = int(data['quantity'])
         if 'Gender' in data:
             product.gender = data['Gender']
         elif 'gender' in data:
