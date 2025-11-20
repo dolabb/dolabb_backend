@@ -151,20 +151,43 @@ def get_product_detail(request, product_id):
                 # If anything fails, seller will remain None
                 seller = None
         
-        return Response({
+        # Get shipping info
+        shipping_info = None
+        if product.shipping_info:
+            shipping_info = {
+                'cost': product.shipping_info.cost,
+                'estimated_days': product.shipping_info.estimated_days,
+                'locations': product.shipping_info.locations
+            }
+        
+        # Build product data - matching create/update response structure
+        product_data = {
             'id': str(product.id),
-            'title': product.title,
-            'description': product.description,
+            'itemtitle': product.title,
+            'description': product.description or '',
             'price': product.price,
-            'originalPrice': product.original_price,
-            'images': product.images,
+            'originalPrice': product.original_price or product.price,
             'category': product.category,
-            'subcategory': product.subcategory,
-            'brand': product.brand,
-            'size': product.size,
-            'color': product.color,
-            'condition': product.condition,
-            'tags': product.tags,
+            'subcategory': product.subcategory or '',
+            'brand': product.brand or '',
+            'currency': product.currency,
+            'Quantity': product.quantity,
+            'Gender': product.gender or '',
+            'Size': product.size or '',
+            'Color': product.color or '',
+            'Condition': product.condition,
+            'SKU/ID (Optional)': product.sku or '',
+            'Tags/Keywords': product.tags or [],
+            'Images': product.images or [],
+            'Shipping Cost': product.shipping_cost,
+            'Processing Time (days)': product.processing_time_days,
+            'Shipping Locations': shipping_info['locations'] if shipping_info else [],
+            'status': product.status,
+            'seller_id': str(product.seller_id.id) if hasattr(product.seller_id, 'id') else str(product.seller_id),
+            'seller_name': product.seller_name,
+            'created_at': product.created_at.isoformat() if product.created_at else None,
+            'updated_at': product.updated_at.isoformat() if product.updated_at else None,
+            # Additional fields for frontend compatibility
             'seller': {
                 'id': str(seller.id) if seller else '',
                 'username': seller.username if seller else '',
@@ -180,9 +203,14 @@ def get_product_detail(request, product_id):
                 'estimatedDays': product.processing_time_days,
                 'locations': product.shipping_info.locations if product.shipping_info else []
             },
-            'createdAt': product.created_at.isoformat(),
             'affiliateCode': product.affiliate_code or ''
-        }, status=status.HTTP_200_OK)
+        }
+        
+        # Add affiliate code only if it exists
+        if product.affiliate_code:
+            product_data['Affiliate Code (Optional)'] = product.affiliate_code
+        
+        return Response(product_data, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
