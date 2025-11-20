@@ -320,6 +320,12 @@ def get_profile(request):
             }, status=status.HTTP_200_OK)
         
         elif hasattr(user, 'full_name') and hasattr(user, 'affiliate_code'):  # Affiliate
+            # Format earnings and usage count as numbers
+            total_earnings = float(user.total_earnings) if hasattr(user, 'total_earnings') and user.total_earnings else 0.0
+            pending_earnings = float(user.pending_earnings) if hasattr(user, 'pending_earnings') and user.pending_earnings else 0.0
+            paid_earnings = float(user.paid_earnings) if hasattr(user, 'paid_earnings') and user.paid_earnings else 0.0
+            code_usage_count = int(user.code_usage_count) if hasattr(user, 'code_usage_count') and user.code_usage_count else 0
+            
             return Response({
                 'success': True,
                 'user': {
@@ -332,7 +338,13 @@ def get_profile(request):
                     'bio': '',
                     'location': '',
                     'joined_date': get_date_safe(user, 'created_at'),
-                    'role': 'affiliate'
+                    'role': 'affiliate',
+                    'affiliate_code': safe_get(user, 'affiliate_code'),
+                    'totalEarnings': total_earnings,
+                    'pendingEarnings': pending_earnings,
+                    'paidEarnings': paid_earnings,
+                    'codeUsageCount': code_usage_count,
+                    'availableBalance': pending_earnings
                 }
             }, status=status.HTTP_200_OK)
         
@@ -457,6 +469,12 @@ def affiliate_login(request):
             serializer.validated_data['email'],
             serializer.validated_data['password']
         )
+        # Format earnings and usage count as numbers
+        total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+        pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+        paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+        code_usage_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
+        
         return Response({
             'success': True,
             'affiliate': {
@@ -465,9 +483,12 @@ def affiliate_login(request):
                 'email': affiliate.email,
                 'phone': affiliate.phone,
                 'affiliate_code': affiliate.affiliate_code,
-                'total_earnings': affiliate.total_earnings,
-                'total_commissions': affiliate.total_earnings,
-                'code_usage_count': affiliate.code_usage_count,
+                'totalEarnings': total_earnings,
+                'totalCommissions': total_earnings,
+                'pendingEarnings': pending_earnings,
+                'paidEarnings': paid_earnings,
+                'codeUsageCount': code_usage_count,
+                'availableBalance': pending_earnings,  # Available balance = pending earnings
                 'status': affiliate.status
             },
             'token': token
