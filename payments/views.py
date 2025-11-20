@@ -94,12 +94,16 @@ def payment_webhook(request):
         
         # Update payment status
         from payments.models import Payment
+        from products.services import OrderService
         payment = Payment.objects(moyasar_payment_id=payment_id).first()
         if payment:
             if payment_status == 'paid':
                 payment.status = 'completed'
                 payment.order_id.payment_status = 'completed'
                 payment.order_id.save()
+                
+                # Update affiliate earnings when payment is completed
+                OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
             elif payment_status == 'failed':
                 payment.status = 'failed'
                 payment.order_id.payment_status = 'failed'

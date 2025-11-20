@@ -74,6 +74,11 @@ class MoyasarPaymentService:
             order.payment_id = payment_data.get('id')
             order.save()
             
+            # Update affiliate earnings if payment is completed
+            if payment.status == 'completed':
+                from products.services import OrderService
+                OrderService.update_affiliate_earnings_on_payment_completion(order)
+            
             return payment, payment_data
         except requests.exceptions.RequestException as e:
             raise ValueError(f"Payment processing failed: {str(e)}")
