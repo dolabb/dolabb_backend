@@ -58,6 +58,20 @@ class ProductService:
         affiliate_code = data.get('Affiliate Code (Optional)', '').strip() if data.get('Affiliate Code (Optional)') else ''
         if affiliate_code:
             product.affiliate_code = affiliate_code
+            
+            # Update affiliate code usage count when product is created
+            try:
+                from authentication.models import Affiliate
+                affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
+                if affiliate:
+                    current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
+                    affiliate.code_usage_count = str(current_count + 1)
+                    affiliate.last_activity = datetime.utcnow()
+                    affiliate.save()
+            except Exception as e:
+                # Log error but don't fail product creation
+                import logging
+                logging.error(f"Failed to update affiliate code usage count: {str(e)}")
         else:
             product.affiliate_code = None
         
@@ -721,25 +735,9 @@ class OrderService:
         
         order.save()
         
-        # Update affiliate statistics if affiliate code was used
+        # Create affiliate transaction record (but don't update earnings yet - only when payment is completed)
         if affiliate and affiliate_code and affiliate_commission > 0:
             try:
-                # Update code usage count
-                current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
-                affiliate.code_usage_count = str(current_count + 1)
-                
-                # Update total earnings
-                current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
-                affiliate.total_earnings = str(round(current_earnings + affiliate_commission, 2))
-                
-                # Update pending earnings
-                current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
-                affiliate.pending_earnings = str(round(current_pending + affiliate_commission, 2))
-                
-                affiliate.last_activity = datetime.utcnow()
-                affiliate.save()
-                
-                # Create affiliate transaction record
                 from affiliates.models import AffiliateTransaction
                 from admin_dashboard.models import FeeSettings
                 
@@ -761,15 +759,68 @@ class OrderService:
                     transaction_id=order.id,
                     commission_rate=used_commission_rate,  # Store the actual rate used
                     commission_amount=affiliate_commission,
-                    status='pending'
+                    status='pending'  # Will be updated to 'paid' when payment is completed
                 )
                 transaction.save()
             except Exception as e:
                 # Log error but don't fail the order creation
                 import logging
-                logging.error(f"Failed to update affiliate statistics: {str(e)}")
+                logging.error(f"Failed to create affiliate transaction: {str(e)}")
         
         return order
+    
+    @staticmethod
+    def update_affiliate_earnings_on_payment_completion(order):
+        """
+        Update affiliate earnings when order payment is completed
+        This should only be called when payment_status changes to 'completed'
+        Earnings are only updated when product is SOLD (payment completed)
+        """
+        # Only process if payment is completed
+        if order.payment_status != 'completed':
+            return
+            
+        if not order.affiliate_code or order.affiliate_commission <= 0:
+            return
+        
+        try:
+            from authentication.models import Affiliate
+            from affiliates.models import AffiliateTransaction
+            
+            affiliate = Affiliate.objects(affiliate_code=order.affiliate_code, status='active').first()
+            if not affiliate:
+                return
+            
+            # Check if earnings were already updated for this order
+            existing_transaction = AffiliateTransaction.objects(
+                transaction_id=order.id,
+                affiliate_id=affiliate.id
+            ).first()
+            
+            if existing_transaction and existing_transaction.status == 'paid':
+                # Already processed, skip to avoid double-counting
+                return
+            
+            # Update total earnings (only when payment is completed)
+            current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+            affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
+            
+            # Update pending earnings (only when payment is completed)
+            current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+            affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
+            
+            affiliate.last_activity = datetime.utcnow()
+            affiliate.save()
+            
+            # Update transaction status to 'paid'
+            if existing_transaction:
+                existing_transaction.status = 'paid'
+                existing_transaction.save()
+            
+        except Exception as e:
+            # Log error but don't fail payment processing
+            import logging
+            logging.error(f"Failed to update affiliate earnings: {str(e)}")
     
     @staticmethod
     def get_user_orders(user_id, user_type='buyer', status=None, page=1, limit=20):
