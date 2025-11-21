@@ -65,20 +65,21 @@ class Admin(Document):
 class TempUser(Document):
     """Temporary user model for storing unverified signup data"""
     full_name = StringField(required=True, max_length=200)
+    username = StringField(required=True, unique=True, max_length=100)
     email = EmailField(required=True, unique=True)
     phone = StringField(max_length=20)
     country_code = StringField(max_length=10)
     dial_code = StringField(max_length=10)
     password_hash = StringField(required=True)
     profile_image = StringField()
-    role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
+    role = StringField(required=True, choices=['buyer', 'seller'], default='seller')
     status = StringField(default='pending_verification')
     otp = EmbeddedDocumentField(OTPEmbedded)
     created_at = DateTimeField(default=datetime.utcnow)
     
     meta = {
         'collection': 'temp_users',
-        'indexes': ['email']
+        'indexes': ['email', 'username']
     }
     
     def set_password(self, password):

@@ -31,6 +31,7 @@ class AdminResetPasswordSerializer(serializers.Serializer):
 
 class UserSignupSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=200)
+    username = serializers.CharField(max_length=100)
     email = serializers.EmailField()
     phone = serializers.CharField(max_length=20)
     password = serializers.CharField(write_only=True, min_length=6)
@@ -38,12 +39,26 @@ class UserSignupSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=10, required=False)
     dial_code = serializers.CharField(max_length=10, required=False)
     profile_image_url = serializers.URLField(required=False, allow_blank=True)
-    role = serializers.ChoiceField(choices=['buyer', 'seller'], default='buyer', required=False)
+    role = serializers.ChoiceField(choices=['buyer', 'seller'], default='seller', required=False)
 
 
 class UserLoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    username = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True)
+    
+    def validate(self, data):
+        """Validate that either username or email is provided"""
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip()
+        
+        if not username and not email:
+            raise serializers.ValidationError("Either username or email is required")
+        
+        if username and email:
+            raise serializers.ValidationError("Please provide either username or email, not both")
+        
+        return data
 
 
 class UserForgotPasswordSerializer(serializers.Serializer):

@@ -138,6 +138,7 @@ def user_signup(request):
     try:
         temp_user, otp = AuthService.user_signup(
             serializer.validated_data['full_name'],
+            serializer.validated_data['username'],
             serializer.validated_data['email'],
             serializer.validated_data['phone'],
             serializer.validated_data['password'],
@@ -152,6 +153,7 @@ def user_signup(request):
             'message': 'User registered successfully. OTP sent to email. Please verify OTP to complete registration.',
             'user': {
                 'id': str(temp_user.id),
+                'username': temp_user.username,
                 'email': temp_user.email,
                 'phone': temp_user.phone,
                 'profile_image': temp_user.profile_image or '',
@@ -175,8 +177,10 @@ def user_login(request):
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Get either username or email from validated data
+        identifier = serializer.validated_data.get('username') or serializer.validated_data.get('email')
         user, token = AuthService.user_login(
-            serializer.validated_data['email'],
+            identifier,
             serializer.validated_data['password']
         )
         

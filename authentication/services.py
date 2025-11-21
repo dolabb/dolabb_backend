@@ -144,21 +144,30 @@ class AuthService:
         return admin
     
     @staticmethod
-    def user_signup(full_name, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer'):
+    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='seller'):
         """User signup - stores in temp_users until OTP verification"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
         
-        # Check if user already exists in users collection
+        # Validate username uniqueness in users collection
+        if User.objects(username=username).first():
+            raise ValueError("Username already taken")
+        
+        # Validate username uniqueness in temp_users collection
+        if TempUser.objects(username=username).first():
+            raise ValueError("Username already taken")
+        
+        # Check if user already exists in users collection (by email)
         if User.objects(email=email).first():
             raise ValueError("User with this email already exists")
         
-        # Check if user already exists in temp_users collection
+        # Check if user already exists in temp_users collection (by email)
         existing_temp = TempUser.objects(email=email).first()
         if existing_temp:
             # Update existing temp user instead of creating new one
             temp_user = existing_temp
             temp_user.full_name = full_name
+            temp_user.username = username
             temp_user.phone = phone
             temp_user.country_code = country_code
             temp_user.dial_code = dial_code
@@ -169,6 +178,7 @@ class AuthService:
             # Create new temp user
             temp_user = TempUser(
                 full_name=full_name,
+                username=username,
                 email=email,
                 phone=phone,
                 country_code=country_code,
@@ -217,16 +227,16 @@ class AuthService:
             temp_user.delete()
             raise ValueError("User already exists in verified users")
         
-        # Generate username from email
-        username = email.split('@')[0]
-        counter = 1
-        while User.objects(username=username).first():
-            username = f"{email.split('@')[0]}{counter}"
-            counter += 1
+        # Check if username already exists in users (shouldn't happen, but safety check)
+        if User.objects(username=temp_user.username).first():
+            # Delete temp entry and raise error
+            temp_user.delete()
+            raise ValueError("Username already taken")
         
-        # Create user in main users collection
+        # Create user in main users collection using username from temp_user
         user = User(
             full_name=temp_user.full_name,
+            username=temp_user.username,
             email=temp_user.email,
             phone=temp_user.phone,
             country_code=temp_user.country_code,
@@ -235,7 +245,6 @@ class AuthService:
             role=temp_user.role,
             password_hash=temp_user.password_hash  # Copy hashed password
         )
-        user.username = username
         user.status = 'active'
         
         try:
@@ -255,18 +264,29 @@ class AuthService:
             raise Exception(f"Failed to complete verification: {str(e)}")
     
     @staticmethod
-    def user_login(email, password):
-        """User login"""
+    def user_login(identifier, password):
+        """User login - accepts either username or email"""
+        # Determine if identifier is username or email
+        is_email = '@' in identifier
+        
         # First check if user exists in temp_users (pending verification)
-        temp_user = TempUser.objects(email=email).first()
+        if is_email:
+            temp_user = TempUser.objects(email=identifier).first()
+        else:
+            temp_user = TempUser.objects(username=identifier).first()
+        
         if temp_user:
             if temp_user.check_password(password):
                 raise ValueError("Verification pending. Please verify your email with the OTP sent to your email address.")
             else:
                 raise ValueError("Invalid credentials")
         
-        # Check verified users
-        user = User.objects(email=email).first()
+        # Check verified users by username or email
+        if is_email:
+            user = User.objects(email=identifier).first()
+        else:
+            user = User.objects(username=identifier).first()
+        
         if not user or not user.check_password(password):
             raise ValueError("Invalid credentials")
         
