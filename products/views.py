@@ -35,6 +35,7 @@ def get_products(request):
         'minPrice': request.GET.get('minPrice'),
         'maxPrice': request.GET.get('maxPrice'),
         'size': request.GET.get('size'),
+        'color': request.GET.get('color'),
         'condition': request.GET.get('condition'),
         'search': request.GET.get('search'),
         'sortBy': sort_by
@@ -110,6 +111,22 @@ def get_products(request):
         
         # Return products array directly
         return Response(products_list, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_categories(request):
+    """Get all categories with their subcategories, brands, and colors"""
+    try:
+        data = ProductService.get_categories_with_subcategories()
+        return Response({
+            'success': True,
+            'categories': data['categories'],
+            'brands': data['brands'],
+            'colors': data['colors']
+        }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

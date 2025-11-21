@@ -119,6 +119,8 @@ class ProductService:
                 query = query.filter(price__lte=float(filters['maxPrice']))
             if filters.get('size'):
                 query = query.filter(size=filters['size'])
+            if filters.get('color'):
+                query = query.filter(color=filters['color'])
             if filters.get('condition'):
                 query = query.filter(condition=filters['condition'])
             if filters.get('search'):
@@ -150,6 +152,89 @@ class ProductService:
         products = query.skip(skip).limit(limit)
         
         return products, total
+    
+    @staticmethod
+    def get_categories_with_subcategories():
+        """Get all categories with their subcategories, brands, and colors using MongoDB aggregation"""
+        from collections import defaultdict
+        
+        # Use MongoDB aggregation to get distinct values efficiently
+        # This avoids loading all products into memory
+        
+        # Get distinct categories with their subcategories using aggregation
+        pipeline = [
+            {'$match': {'status': 'active', 'approved': True}},
+            {'$group': {
+                '_id': {
+                    'category': '$category',
+                    'subcategory': '$subcategory'
+                }
+            }},
+            {'$project': {
+                'category': '$_id.category',
+                'subcategory': '$_id.subcategory',
+                '_id': 0
+            }}
+        ]
+        
+        # Get distinct brands using aggregation
+        brands_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'brand': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$brand'}},
+            {'$project': {'brand': '$_id', '_id': 0}}
+        ]
+        
+        # Get distinct colors using aggregation
+        colors_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'color': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$color'}},
+            {'$project': {'color': '$_id', '_id': 0}}
+        ]
+        
+        # Execute aggregations
+        category_subcategory_pairs = list(Product.objects.aggregate(*pipeline))
+        brands_data = list(Product.objects.aggregate(*brands_pipeline))
+        colors_data = list(Product.objects.aggregate(*colors_pipeline))
+        
+        # Process categories and subcategories
+        categories_dict = defaultdict(set)
+        for item in category_subcategory_pairs:
+            category = item.get('category')
+            subcategory = item.get('subcategory', '').strip()
+            if category and subcategory:
+                categories_dict[category].add(subcategory)
+        
+        # Convert to the desired format
+        categories_list = []
+        category_order = ['women', 'men', 'watches', 'jewelry', 'accessories']
+        
+        for category in category_order:
+            subcategories = sorted(list(categories_dict[category])) if category in categories_dict else []
+            categories_list.append({
+                'category': category,
+                'subcategories': subcategories
+            })
+        
+        # Also include any categories that might exist in products but not in the predefined list
+        for category in categories_dict:
+            if category not in category_order:
+                subcategories = sorted(list(categories_dict[category]))
+                categories_list.append({
+                    'category': category,
+                    'subcategories': subcategories
+                })
+        
+        # Extract and sort brands
+        brands_list = sorted([item['brand'].strip() for item in brands_data if item.get('brand') and item['brand'].strip()])
+        
+        # Extract and sort colors
+        colors_list = sorted([item['color'].strip() for item in colors_data if item.get('color') and item['color'].strip()])
+        
+        return {
+            'categories': categories_list,
+            'brands': brands_list,
+            'colors': colors_list
+        }
     
     @staticmethod
     def get_product_by_id(product_id, user_id=None):
