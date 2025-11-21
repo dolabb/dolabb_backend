@@ -15,16 +15,16 @@ from authentication.models import User
 def get_products(request):
     """Get products with filters"""
     # Get sortBy and normalize it
-    sort_by = request.GET.get('sortBy', 'newest')
+    sort_by = request.GET.get('sortBy', 'newly listed')
     # Normalize common variations
     if sort_by:
         sort_by_lower = sort_by.lower().strip()
         if sort_by_lower in ['relevance', 'relevant']:
             sort_by = 'relevance'
-        elif sort_by_lower in ['price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
-            sort_by = 'price: low to high'
-        elif sort_by_lower in ['price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
-            sort_by = 'price: high to low'
+        elif sort_by_lower in ['low to high', 'price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
+            sort_by = 'low to high'
+        elif sort_by_lower in ['high to low', 'price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
+            sort_by = 'high to low'
         elif sort_by_lower in ['newly listed', 'newest', 'new', 'newly-listed']:
             sort_by = 'newly listed'
     
@@ -118,14 +118,15 @@ def get_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_categories(request):
-    """Get all categories with their subcategories, brands, and colors"""
+    """Get all categories with their subcategories, brands, colors, and sizes"""
     try:
         data = ProductService.get_categories_with_subcategories()
         return Response({
             'success': True,
             'categories': data['categories'],
             'brands': data['brands'],
-            'colors': data['colors']
+            'colors': data['colors'],
+            'sizes': data['sizes']
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

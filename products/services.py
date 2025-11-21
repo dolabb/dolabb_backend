@@ -110,41 +110,81 @@ class ProductService:
             if filters.get('category'):
                 query = query.filter(category=filters['category'])
             if filters.get('subcategory'):
-                query = query.filter(subcategory=filters['subcategory'])
+                # Handle subcategory filtering - support exact match and case-insensitive
+                subcategory = filters['subcategory'].strip()
+                if subcategory:
+                    # Use case-insensitive matching for subcategory
+                    query = query.filter(Q(subcategory__iexact=subcategory) | Q(subcategory=subcategory))
             if filters.get('brand'):
-                query = query.filter(brand=filters['brand'])
+                brand = filters['brand'].strip()
+                if brand:
+                    # Use case-insensitive matching for brand
+                    query = query.filter(Q(brand__iexact=brand) | Q(brand=brand))
             if filters.get('minPrice'):
-                query = query.filter(price__gte=float(filters['minPrice']))
+                try:
+                    query = query.filter(price__gte=float(filters['minPrice']))
+                except (ValueError, TypeError):
+                    pass
             if filters.get('maxPrice'):
-                query = query.filter(price__lte=float(filters['maxPrice']))
+                try:
+                    query = query.filter(price__lte=float(filters['maxPrice']))
+                except (ValueError, TypeError):
+                    pass
             if filters.get('size'):
-                query = query.filter(size=filters['size'])
+                size = filters['size'].strip()
+                if size:
+                    # Support sizes from 2XS to One Size (case-insensitive)
+                    query = query.filter(Q(size__iexact=size) | Q(size=size))
             if filters.get('color'):
-                query = query.filter(color=filters['color'])
+                color = filters['color'].strip()
+                if color:
+                    # Use case-insensitive matching for color
+                    query = query.filter(Q(color__iexact=color) | Q(color=color))
             if filters.get('condition'):
-                query = query.filter(condition=filters['condition'])
+                # Map user-friendly condition names to database values
+                condition = filters['condition'].strip().lower()
+                condition_mapping = {
+                    'brand new': 'new',
+                    'like new': 'like-new',
+                    'used - excellent': 'good',  # Map to 'good' as it's closest
+                    'used - good': 'good',
+                    'used - fair': 'fair',
+                    'new': 'new',
+                    'like-new': 'like-new',
+                    'good': 'good',
+                    'fair': 'fair'
+                }
+                db_condition = condition_mapping.get(condition, condition)
+                if db_condition in ['new', 'like-new', 'good', 'fair']:
+                    query = query.filter(condition=db_condition)
             if filters.get('search'):
-                query = query.filter(title__icontains=filters['search'])
+                search_term = filters['search'].strip()
+                if search_term:
+                    query = query.filter(title__icontains=search_term)
         
         # Sorting - handle different sortBy options
-        sort_by = filters.get('sortBy', 'newest') if filters else 'newest'
+        sort_by = filters.get('sortBy', 'newly listed') if filters else 'newly listed'
         if sort_by:
             sort_by_lower = sort_by.lower().strip()
             
-            if sort_by_lower in ['price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
+            # Low to High / Price: Low to High
+            if sort_by_lower in ['low to high', 'price: low to high', 'price-low-to-high', 'price_asc', 'price_ascending', 'price low to high']:
                 query = query.order_by('price')
-            elif sort_by_lower in ['price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
+            # High to Low / Price: High to Low
+            elif sort_by_lower in ['high to low', 'price: high to low', 'price-high-to-low', 'price_desc', 'price_descending', 'price high to low']:
                 query = query.order_by('-price')
+            # Newly Listed
             elif sort_by_lower in ['newly listed', 'newest', 'new', 'newly-listed']:
                 query = query.order_by('-created_at')
+            # Relevance
             elif sort_by_lower in ['relevance', 'relevant']:
                 # Relevance: sort by likes_count first, then by created_at
                 query = query.order_by('-likes_count', '-created_at')
             else:
-                # Default: newest first
+                # Default: newly listed first
                 query = query.order_by('-created_at')
         else:
-            # Default: newest first
+            # Default: newly listed first
             query = query.order_by('-created_at')
         
         total = query.count()
@@ -191,10 +231,18 @@ class ProductService:
             {'$project': {'color': '$_id', '_id': 0}}
         ]
         
+        # Get distinct sizes using aggregation
+        sizes_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'size': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$size'}},
+            {'$project': {'size': '$_id', '_id': 0}}
+        ]
+        
         # Execute aggregations
         category_subcategory_pairs = list(Product.objects.aggregate(*pipeline))
         brands_data = list(Product.objects.aggregate(*brands_pipeline))
         colors_data = list(Product.objects.aggregate(*colors_pipeline))
+        sizes_data = list(Product.objects.aggregate(*sizes_pipeline))
         
         # Process categories and subcategories
         categories_dict = defaultdict(set)
@@ -230,10 +278,27 @@ class ProductService:
         # Extract and sort colors
         colors_list = sorted([item['color'].strip() for item in colors_data if item.get('color') and item['color'].strip()])
         
+        # Extract and sort sizes - maintain order: 2XS, XS, S, M, L, XL, 2XL, 3XL, One Size, etc.
+        size_order = ['2XS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'One Size']
+        sizes_raw = [item['size'].strip() for item in sizes_data if item.get('size') and item['size'].strip()]
+        
+        # Sort sizes: first by predefined order, then alphabetically for others
+        sizes_list = []
+        for size in size_order:
+            for s in sizes_raw:
+                if s.upper() == size.upper():
+                    sizes_list.append(s)
+                    break
+        
+        # Add remaining sizes alphabetically
+        remaining_sizes = sorted([s for s in sizes_raw if s not in sizes_list], key=str.lower)
+        sizes_list.extend(remaining_sizes)
+        
         return {
             'categories': categories_list,
             'brands': brands_list,
-            'colors': colors_list
+            'colors': colors_list,
+            'sizes': sizes_list
         }
     
     @staticmethod
