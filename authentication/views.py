@@ -32,7 +32,8 @@ def admin_signup(request):
             serializer.validated_data['email'],
             serializer.validated_data['password'],
             serializer.validated_data['confirm_password'],
-            serializer.validated_data.get('profile_image_url')
+            serializer.validated_data.get('profile_image_url'),
+            request
         )
         return Response({
             'success': True,
@@ -146,7 +147,8 @@ def user_signup(request):
             serializer.validated_data.get('country_code'),
             serializer.validated_data.get('dial_code'),
             serializer.validated_data.get('profile_image_url'),
-            serializer.validated_data.get('role', 'buyer')
+            serializer.validated_data.get('role', 'buyer'),
+            request
         )
         return Response({
             'success': True,
@@ -407,7 +409,9 @@ def update_profile(request):
         if 'location' in data:
             user.location = data['location']
         if 'profile_image' in data:
-            user.profile_image = data['profile_image']
+            # Process base64 image if needed
+            processed_image = AuthService.process_profile_image(data['profile_image'], request)
+            user.profile_image = processed_image if processed_image else data['profile_image']
         if 'shipping_address' in data:
             user.shipping_address = data['shipping_address']
         if 'shippingAddress' in data:
@@ -462,7 +466,8 @@ def affiliate_signup(request):
             serializer.validated_data['account_number'],
             serializer.validated_data.get('iban'),
             serializer.validated_data.get('account_holder_name'),
-            serializer.validated_data.get('profile_image_url')
+            serializer.validated_data.get('profile_image_url'),
+            request
         )
         return Response({
             'success': True,

@@ -2,6 +2,9 @@
 Authentication services
 """
 import jwt
+import base64
+import os
+import uuid
 from datetime import datetime, timedelta
 from django.conf import settings
 from authentication.models import Admin, User, Affiliate, TempUser
@@ -42,7 +45,73 @@ class AuthService:
     """Authentication service"""
     
     @staticmethod
-    def admin_signup(name, email, password, confirm_password, profile_image_url=None):
+    def process_profile_image(image_data, request=None):
+        """Convert base64 profile image to URL by saving it to server"""
+        if not image_data:
+            return None
+        
+        # If already a URL, keep it as is
+        if isinstance(image_data, str):
+            if image_data.startswith('http://') or image_data.startswith('https://'):
+                return image_data
+            
+            # Check if it's base64
+            if image_data.startswith('data:image'):
+                try:
+                    # Extract base64 data
+                    header, encoded = image_data.split(',', 1)
+                    # Get file extension from header
+                    if 'jpeg' in header or 'jpg' in header:
+                        ext = '.jpg'
+                    elif 'png' in header:
+                        ext = '.png'
+                    elif 'gif' in header:
+                        ext = '.gif'
+                    elif 'webp' in header:
+                        ext = '.webp'
+                    else:
+                        ext = '.jpg'  # default
+                    
+                    # Decode base64
+                    image_bytes = base64.b64decode(encoded)
+                    
+                    # Create upload directory
+                    upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'profiles')
+                    os.makedirs(upload_dir, exist_ok=True)
+                    
+                    # Generate unique filename
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+                    file_path = os.path.join(upload_dir, unique_filename)
+                    
+                    # Save file
+                    with open(file_path, 'wb') as f:
+                        f.write(image_bytes)
+                    
+                    # Generate URL
+                    media_url = settings.MEDIA_URL.rstrip('/')
+                    file_url = f"{media_url}/uploads/profiles/{unique_filename}"
+                    
+                    # Build absolute URL if request is available
+                    if request:
+                        absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
+                    else:
+                        # Fallback to default if no request
+                        absolute_url = f"https://dolabb-backend-2vsj.onrender.com{file_url}"
+                    
+                    return absolute_url
+                except Exception as e:
+                    # If base64 processing fails, log error and return None
+                    import logging
+                    logging.error(f"Failed to process base64 profile image: {str(e)}")
+                    return None
+            else:
+                # Not base64, not URL - might be a relative path, keep as is
+                return image_data
+        
+        return None
+    
+    @staticmethod
+    def admin_signup(name, email, password, confirm_password, profile_image_url=None, request=None):
         """Admin signup"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
@@ -52,7 +121,9 @@ class AuthService:
         
         admin = Admin(name=name, email=email)
         if profile_image_url:
-            admin.profile_image = profile_image_url
+            # Process base64 image if needed
+            processed_image_url = AuthService.process_profile_image(profile_image_url, request)
+            admin.profile_image = processed_image_url if processed_image_url else profile_image_url
         admin.set_password(password)
         otp_code = admin.generate_otp(settings.OTP_EXPIRY_SECONDS)
         
@@ -144,7 +215,7 @@ class AuthService:
         return admin
     
     @staticmethod
-    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer'):
+    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer', request=None):
         """User signup - stores in temp_users until OTP verification"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
@@ -161,6 +232,11 @@ class AuthService:
         if User.objects(email=email).first():
             raise ValueError("User with this email already exists")
         
+        # Process profile image if provided (convert base64 to URL if needed)
+        processed_profile_image = None
+        if profile_image_url:
+            processed_profile_image = AuthService.process_profile_image(profile_image_url, request)
+        
         # Check if user already exists in temp_users collection (by email)
         existing_temp = TempUser.objects(email=email).first()
         if existing_temp:
@@ -171,7 +247,7 @@ class AuthService:
             temp_user.phone = phone
             temp_user.country_code = country_code
             temp_user.dial_code = dial_code
-            temp_user.profile_image = profile_image_url
+            temp_user.profile_image = processed_profile_image if processed_profile_image else profile_image_url
             temp_user.role = role
             temp_user.set_password(password)
         else:
@@ -183,7 +259,7 @@ class AuthService:
                 phone=phone,
                 country_code=country_code,
                 dial_code=dial_code,
-                profile_image=profile_image_url,
+                profile_image=processed_profile_image if processed_profile_image else profile_image_url,
                 role=role,
                 status='pending_verification'
             )
@@ -390,7 +466,7 @@ class AuthService:
         return affiliate, token
     
     @staticmethod
-    def affiliate_signup(full_name, email, phone, password, country_code, bank_name, account_number, iban=None, account_holder_name=None, profile_image_url=None):
+    def affiliate_signup(full_name, email, phone, password, country_code, bank_name, account_number, iban=None, account_holder_name=None, profile_image_url=None, request=None):
         """Affiliate signup"""
         if Affiliate.objects(email=email).first():
             raise ValueError("Affiliate with this email already exists")
@@ -402,6 +478,11 @@ class AuthService:
         while Affiliate.objects(affiliate_code=affiliate_code).first():
             affiliate_code = f"AFF-{''.join(random.choices(string.ascii_uppercase + string.digits, k=6))}"
         
+        # Process profile image if provided (convert base64 to URL if needed)
+        processed_profile_image = None
+        if profile_image_url:
+            processed_profile_image = AuthService.process_profile_image(profile_image_url, request)
+        
         affiliate = Affiliate(
             full_name=full_name,
             email=email,
@@ -412,7 +493,7 @@ class AuthService:
             iban=iban,
             account_holder_name=account_holder_name or full_name,
             affiliate_code=affiliate_code,
-            profile_image=profile_image_url
+            profile_image=processed_profile_image if processed_profile_image else profile_image_url
         )
         affiliate.set_password(password)
         # Generate OTP for affiliate verification
