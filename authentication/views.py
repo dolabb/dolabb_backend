@@ -288,6 +288,22 @@ def get_profile(request):
             except:
                 return default
         
+        # Helper function to normalize profile image URL
+        def normalize_image_url(url):
+            """Normalize image URL to ensure it's accessible"""
+            if not url or url == '':
+                return ''
+            # If URL is already absolute, return as is
+            if url.startswith('http://') or url.startswith('https://'):
+                return url
+            # If URL is relative, make it absolute using current request
+            if url.startswith('/'):
+                return request.build_absolute_uri(url)
+            # If URL doesn't start with /, add /media/ prefix if it's a media file
+            if 'uploads' in url or 'profiles' in url:
+                return request.build_absolute_uri(f'/media/{url}')
+            return url
+        
         # Handle different user types
         if hasattr(user, 'username'):  # Regular User
             return Response({
@@ -298,7 +314,7 @@ def get_profile(request):
                     'email': safe_get(user, 'email'),
                     'phone': safe_get(user, 'phone'),
                     'full_name': safe_get(user, 'full_name'),
-                    'profile_image': safe_get(user, 'profile_image') or '',
+                    'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
                     'bio': safe_get(user, 'bio') or '',
                     'location': safe_get(user, 'location') or '',
                     'joined_date': get_date_safe(user, 'join_date', 'created_at'),
@@ -315,7 +331,7 @@ def get_profile(request):
                     'email': safe_get(user, 'email'),
                     'phone': '',
                     'full_name': safe_get(user, 'name'),
-                    'profile_image': safe_get(user, 'profile_image') or '',
+                    'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
                     'bio': '',
                     'location': '',
                     'joined_date': get_date_safe(user, 'created_at'),
@@ -338,7 +354,7 @@ def get_profile(request):
                     'email': safe_get(user, 'email'),
                     'phone': safe_get(user, 'phone'),
                     'full_name': safe_get(user, 'full_name'),
-                    'profile_image': safe_get(user, 'profile_image') or '',
+                    'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
                     'bio': '',
                     'location': '',
                     'joined_date': get_date_safe(user, 'created_at'),

@@ -57,9 +57,12 @@ def upload_image(request):
             for chunk in image_file.chunks():
                 destination.write(chunk)
         
-        # Generate absolute URL
-        file_url = f"{settings.MEDIA_URL}uploads/profiles/{unique_filename}"
-        absolute_url = request.build_absolute_uri(file_url)
+        # Generate absolute URL - ensure consistent format
+        # Remove leading slash from MEDIA_URL if present, then add it back
+        media_url = settings.MEDIA_URL.rstrip('/')
+        file_url = f"{media_url}/uploads/profiles/{unique_filename}"
+        # Build absolute URL using request's scheme and host
+        absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
         
         # Get user ID if authenticated
         uploaded_by = None
@@ -110,8 +113,25 @@ def serve_media_file(request, file_path):
             raise Http404("File not found")
         
         # Check if file exists and is a file (not a directory)
+        # First try exact path, then try case-insensitive lookup
         if not os.path.exists(full_path) or not os.path.isfile(full_path):
-            raise Http404("File not found")
+            # Try case-insensitive lookup for the filename
+            directory = os.path.dirname(full_path)
+            filename = os.path.basename(full_path)
+            if os.path.exists(directory):
+                # List files in directory and find case-insensitive match
+                try:
+                    files = os.listdir(directory)
+                    for f in files:
+                        if f.lower() == filename.lower():
+                            full_path = os.path.join(directory, f)
+                            break
+                    else:
+                        raise Http404("File not found")
+                except OSError:
+                    raise Http404("File not found")
+            else:
+                raise Http404("File not found")
         
         # Determine content type
         import mimetypes
