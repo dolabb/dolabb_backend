@@ -72,7 +72,7 @@ class TempUser(Document):
     dial_code = StringField(max_length=10)
     password_hash = StringField(required=True)
     profile_image = StringField()
-    role = StringField(required=True, choices=['buyer', 'seller'], default='seller')
+    role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
     status = StringField(default='pending_verification')
     otp = EmbeddedDocumentField(OTPEmbedded)
     created_at = DateTimeField(default=datetime.utcnow)

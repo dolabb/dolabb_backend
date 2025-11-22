@@ -39,7 +39,7 @@ class UserSignupSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=10, required=False)
     dial_code = serializers.CharField(max_length=10, required=False)
     profile_image_url = serializers.URLField(required=False, allow_blank=True)
-    role = serializers.ChoiceField(choices=['buyer', 'seller'], default='seller', required=False)
+    role = serializers.ChoiceField(choices=['buyer', 'seller'], default='buyer', required=False)
 
 
 class UserLoginSerializer(serializers.Serializer):

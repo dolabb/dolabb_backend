@@ -146,7 +146,7 @@ def user_signup(request):
             serializer.validated_data.get('country_code'),
             serializer.validated_data.get('dial_code'),
             serializer.validated_data.get('profile_image_url'),
-            serializer.validated_data.get('role', 'seller')
+            serializer.validated_data.get('role', 'buyer')
         )
         return Response({
             'success': True,

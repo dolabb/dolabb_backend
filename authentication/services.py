@@ -144,7 +144,7 @@ class AuthService:
         return admin
     
     @staticmethod
-    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='seller'):
+    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer'):
         """User signup - stores in temp_users until OTP verification"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
