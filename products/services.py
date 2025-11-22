@@ -777,8 +777,8 @@ class OfferService:
     """Offer service"""
     
     @staticmethod
-    def create_offer(buyer_id, product_id, offer_amount):
-        """Create an offer"""
+    def create_offer(buyer_id, product_id, offer_amount, shipping_address=None, zip_code=None, house_number=None):
+        """Create an offer with optional shipping details"""
         product = Product.objects(id=product_id).first()
         if not product:
             raise ValueError("Product not found")
@@ -800,6 +800,15 @@ class OfferService:
             shipping_cost=product.shipping_cost,
             expiration_date=datetime.utcnow() + timedelta(days=7)
         )
+        
+        # Add shipping details if provided
+        if shipping_address:
+            offer.shipping_address = shipping_address
+        if zip_code:
+            offer.zip_code = zip_code
+        if house_number:
+            offer.house_number = house_number
+        
         offer.save()
         
         return offer

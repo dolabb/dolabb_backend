@@ -73,6 +73,10 @@ class Offer(Document):
     offer_amount = FloatField(required=True)
     original_price = FloatField(required=True)
     shipping_cost = FloatField(default=0.0)
+    # Shipping address details
+    shipping_address = StringField(max_length=500)
+    zip_code = StringField(max_length=20)
+    house_number = StringField(max_length=50)
     status = StringField(choices=['pending', 'accepted', 'rejected', 'countered', 'expired'], default='pending')
     expiration_date = DateTimeField()
     counter_offer_amount = FloatField()

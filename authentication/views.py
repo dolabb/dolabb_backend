@@ -317,6 +317,9 @@ def get_profile(request):
                     'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
                     'bio': safe_get(user, 'bio') or '',
                     'location': safe_get(user, 'location') or '',
+                    'shipping_address': safe_get(user, 'shipping_address') or '',
+                    'zip_code': safe_get(user, 'zip_code') or '',
+                    'house_number': safe_get(user, 'house_number') or '',
                     'joined_date': get_date_safe(user, 'join_date', 'created_at'),
                     'role': safe_get(user, 'role', 'buyer')
                 }
@@ -405,6 +408,18 @@ def update_profile(request):
             user.location = data['location']
         if 'profile_image' in data:
             user.profile_image = data['profile_image']
+        if 'shipping_address' in data:
+            user.shipping_address = data['shipping_address']
+        if 'shippingAddress' in data:
+            user.shipping_address = data['shippingAddress']
+        if 'zip_code' in data:
+            user.zip_code = data['zip_code']
+        if 'zipCode' in data:
+            user.zip_code = data['zipCode']
+        if 'house_number' in data:
+            user.house_number = data['house_number']
+        if 'houseNumber' in data:
+            user.house_number = data['houseNumber']
         user.save()
         
         serializer = UserProfileSerializer({
@@ -416,6 +431,9 @@ def update_profile(request):
             'profile_image': user.profile_image or '',
             'bio': user.bio or '',
             'location': user.location or '',
+            'shipping_address': user.shipping_address or '',
+            'zip_code': user.zip_code or '',
+            'house_number': user.house_number or '',
             'joined_date': user.join_date,
             'role': user.role
         })

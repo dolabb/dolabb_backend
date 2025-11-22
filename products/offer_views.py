@@ -11,13 +11,23 @@ from authentication.models import User
 
 @api_view(['POST'])
 def create_offer(request):
-    """Create offer"""
+    """Create offer with optional shipping details"""
     try:
         buyer_id = str(request.user.id)
         product_id = request.data.get('productId')
         offer_amount = float(request.data.get('offerAmount'))
+        shipping_address = request.data.get('shippingAddress', '').strip()
+        zip_code = request.data.get('zipCode', '').strip()
+        house_number = request.data.get('houseNumber', '').strip()
         
-        offer = OfferService.create_offer(buyer_id, product_id, offer_amount)
+        offer = OfferService.create_offer(
+            buyer_id, 
+            product_id, 
+            offer_amount,
+            shipping_address=shipping_address if shipping_address else None,
+            zip_code=zip_code if zip_code else None,
+            house_number=house_number if house_number else None
+        )
         
         return Response({
             'success': True,
@@ -26,6 +36,9 @@ def create_offer(request):
                 'productId': str(offer.product_id.id),
                 'buyerId': str(offer.buyer_id.id),
                 'offerAmount': offer.offer_amount,
+                'shippingAddress': offer.shipping_address or '',
+                'zipCode': offer.zip_code or '',
+                'houseNumber': offer.house_number or '',
                 'status': offer.status,
                 'createdAt': offer.created_at.isoformat()
             }
@@ -61,6 +74,9 @@ def get_offers(request):
                 'offerAmount': offer.offer_amount,
                 'originalPrice': offer.original_price,
                 'shippingCost': offer.shipping_cost,
+                'shippingAddress': offer.shipping_address or '',
+                'zipCode': offer.zip_code or '',
+                'houseNumber': offer.house_number or '',
                 'status': offer.status,
                 'expirationDate': offer.expiration_date.isoformat() if offer.expiration_date else None,
                 'counterOfferAmount': offer.counter_offer_amount,

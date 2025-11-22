@@ -110,6 +110,9 @@ class UserProfileSerializer(serializers.Serializer):
     profile_image = serializers.CharField()
     bio = serializers.CharField()
     location = serializers.CharField()
+    shipping_address = serializers.CharField()
+    zip_code = serializers.CharField()
+    house_number = serializers.CharField()
     joined_date = serializers.DateTimeField()
     role = serializers.CharField()
 

@@ -118,6 +118,10 @@ class User(Document):
     profile_image = StringField()
     bio = StringField(max_length=500)
     location = StringField(max_length=200)
+    # Shipping address fields
+    shipping_address = StringField(max_length=500)
+    zip_code = StringField(max_length=20)
+    house_number = StringField(max_length=50)
     role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
     status = StringField(choices=['active', 'suspended', 'deactivated'], default='active')
     otp = EmbeddedDocumentField(OTPEmbedded)
