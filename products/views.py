@@ -459,6 +459,23 @@ def save_product(request, product_id):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+def get_cart(request):
+    """Get cart items with total amount"""
+    try:
+        user_id = str(request.user.id)
+        cart_items, total_amount = ProductService.get_cart(user_id)
+        
+        return Response({
+            'success': True,
+            'cart': cart_items,
+            'totalAmount': round(total_amount, 2),
+            'itemCount': len(cart_items)
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['DELETE'])
 def unsave_product(request, product_id):
     """Remove product from wishlist"""

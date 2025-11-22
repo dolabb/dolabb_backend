@@ -661,6 +661,77 @@ class ProductService:
         return saved_products_list
     
     @staticmethod
+    def get_cart(user_id):
+        """Get cart items for a user with total amount"""
+        from bson import ObjectId
+        
+        try:
+            # Convert user_id to ObjectId if needed
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+        except (Exception, ValueError):
+            return [], 0.0
+        
+        # Get all saved products for this user (cart items)
+        saved_products = SavedProduct.objects(user_id=user_obj_id).order_by('-created_at')
+        
+        cart_items = []
+        total_amount = 0.0
+        
+        for saved in saved_products:
+            try:
+                # Handle ReferenceField - product_id might be an ObjectId or a Product object
+                # This is the same way it's handled in save_product and other methods
+                product_obj_id = None
+                
+                # Try to get product_id from ReferenceField
+                if hasattr(saved.product_id, 'id'):
+                    # ReferenceField is dereferenced, get the id
+                    product_obj_id = saved.product_id.id
+                elif isinstance(saved.product_id, ObjectId):
+                    # Already an ObjectId
+                    product_obj_id = saved.product_id
+                elif isinstance(saved.product_id, str):
+                    # String, convert to ObjectId
+                    try:
+                        product_obj_id = ObjectId(saved.product_id)
+                    except (Exception, ValueError):
+                        # Invalid ObjectId format, skip this item
+                        continue
+                else:
+                    # Try to use as is
+                    product_obj_id = saved.product_id
+                
+                # Validate product_obj_id before querying
+                if not product_obj_id:
+                    continue
+                
+                # Get the product - same way as in create_offer
+                product = Product.objects(id=product_obj_id).first()
+                if product and product.status == 'active':  # Only include active products
+                    # Get first image or empty string
+                    image = product.images[0] if product.images and len(product.images) > 0 else ''
+                    
+                    cart_item = {
+                        'id': str(product.id),
+                        'title': product.title,
+                        'price': product.price,
+                        'image': image
+                    }
+                    
+                    cart_items.append(cart_item)
+                    total_amount += product.price
+            except Exception as e:
+                # Skip if product not found or error - log for debugging
+                import logging
+                logging.error(f"Error processing cart item: {str(e)}")
+                continue
+        
+        return cart_items, total_amount
+    
+    @staticmethod
     def get_featured_products(limit=10, page=1, user_id=None):
         """Get featured products"""
         from mongoengine import Q
