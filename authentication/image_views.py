@@ -26,20 +26,52 @@ def upload_image(request):
     try:
         image_file = request.FILES['image']
         
-        # Validate file type
+        # Validate file size (max 5MB)
+        max_size = 5 * 1024 * 1024  # 5MB
+        if image_file.size > max_size:
+            return Response({
+                'success': False,
+                'error': 'File size too large. Maximum size is 5MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file type by content type
         allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
         if image_file.content_type not in allowed_types:
             return Response({
                 'success': False,
-                'error': f'Invalid file type. Allowed types: {", ".join(allowed_types)}'
+                'error': f'Invalid file type. Allowed types: JPEG, JPG, PNG, GIF, WEBP'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate file size (max 10MB)
-        max_size = 10 * 1024 * 1024  # 10MB
-        if image_file.size > max_size:
+        # Validate file extension
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+        file_extension = os.path.splitext(image_file.name.lower())[1]
+        if file_extension not in allowed_extensions:
             return Response({
                 'success': False,
-                'error': 'File size too large. Maximum size is 10MB'
+                'error': f'Invalid file extension. Allowed extensions: {", ".join(allowed_extensions)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate that file is actually an image by reading magic bytes
+        # Read first few bytes to check file signature
+        image_file.seek(0)
+        file_header = image_file.read(12)
+        image_file.seek(0)  # Reset file pointer
+        
+        # Check magic bytes for common image formats
+        is_valid_image = False
+        if file_header.startswith(b'\xFF\xD8\xFF'):  # JPEG
+            is_valid_image = True
+        elif file_header.startswith(b'\x89PNG\r\n\x1a\n'):  # PNG
+            is_valid_image = True
+        elif file_header.startswith(b'GIF87a') or file_header.startswith(b'GIF89a'):  # GIF
+            is_valid_image = True
+        elif file_header.startswith(b'RIFF') and b'WEBP' in file_header:  # WEBP
+            is_valid_image = True
+        
+        if not is_valid_image:
+            return Response({
+                'success': False,
+                'error': 'File is not a valid image. Please upload a valid JPEG, PNG, GIF, or WEBP image.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Create upload directory if it doesn't exist
