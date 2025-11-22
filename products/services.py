@@ -7,13 +7,89 @@ from authentication.models import User
 import random
 import string
 from bson import ObjectId
+import os
+import base64
+import uuid
+from django.conf import settings
 
 
 class ProductService:
     """Product service"""
     
     @staticmethod
-    def create_product(seller_id, data):
+    def process_base64_images(images, request=None):
+        """Convert base64 images to URLs by saving them to server"""
+        if not images:
+            return []
+        
+        processed_images = []
+        for image_data in images:
+            # If already a URL, keep it as is
+            if isinstance(image_data, str):
+                if image_data.startswith('http://') or image_data.startswith('https://'):
+                    processed_images.append(image_data)
+                    continue
+                
+                # Check if it's base64
+                if image_data.startswith('data:image'):
+                    try:
+                        # Extract base64 data
+                        header, encoded = image_data.split(',', 1)
+                        # Get file extension from header
+                        if 'jpeg' in header or 'jpg' in header:
+                            ext = '.jpg'
+                        elif 'png' in header:
+                            ext = '.png'
+                        elif 'gif' in header:
+                            ext = '.gif'
+                        elif 'webp' in header:
+                            ext = '.webp'
+                        else:
+                            ext = '.jpg'  # default
+                        
+                        # Decode base64
+                        image_bytes = base64.b64decode(encoded)
+                        
+                        # Create upload directory
+                        upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'products')
+                        os.makedirs(upload_dir, exist_ok=True)
+                        
+                        # Generate unique filename
+                        unique_filename = f"{uuid.uuid4()}{ext}"
+                        file_path = os.path.join(upload_dir, unique_filename)
+                        
+                        # Save file
+                        with open(file_path, 'wb') as f:
+                            f.write(image_bytes)
+                        
+                        # Generate URL
+                        media_url = settings.MEDIA_URL.rstrip('/')
+                        file_url = f"{media_url}/uploads/products/{unique_filename}"
+                        
+                        # Build absolute URL if request is available
+                        if request:
+                            absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
+                        else:
+                            # Fallback to default if no request
+                            absolute_url = f"https://dolabb-backend-2vsj.onrender.com{file_url}"
+                        
+                        processed_images.append(absolute_url)
+                    except Exception as e:
+                        # If base64 processing fails, skip this image
+                        import logging
+                        logging.error(f"Failed to process base64 image: {str(e)}")
+                        continue
+                else:
+                    # Not base64, not URL - might be a relative path, keep as is
+                    processed_images.append(image_data)
+            else:
+                # Not a string, skip
+                continue
+        
+        return processed_images
+    
+    @staticmethod
+    def create_product(seller_id, data, request=None):
         """Create a new product"""
         seller = User.objects(id=seller_id).first()
         if not seller:
@@ -49,7 +125,7 @@ class ProductService:
             condition=data.get('Condition', 'good'),
             sku=data.get('SKU/ID (Optional)', ''),
             tags=data.get('Tags/Keywords', []),
-            images=data.get('Images', []),
+            images=ProductService.process_base64_images(data.get('Images', []), request),
             shipping_cost=float(data.get('Shipping Cost', 0.0)),
             processing_time_days=int(data.get('Processing Time (days)', 7))
         )
@@ -338,7 +414,7 @@ class ProductService:
         return product, is_saved, is_liked
     
     @staticmethod
-    def update_product(product_id, seller_id, data):
+    def update_product(product_id, seller_id, data, request=None):
         """Update product"""
         from bson import ObjectId
         
@@ -396,7 +472,7 @@ class ProductService:
         if 'Tags/Keywords' in data:
             product.tags = data['Tags/Keywords']
         if 'Images' in data:
-            product.images = data['Images']
+            product.images = ProductService.process_base64_images(data['Images'], request)
         if 'Shipping Cost' in data:
             product.shipping_cost = float(data['Shipping Cost'])
         if 'Processing Time (days)' in data:

@@ -194,7 +194,6 @@ def get_product_detail(request, product_id):
             'Size': product.size or '',
             'Color': product.color or '',
             'Condition': product.condition,
-            'SKU/ID (Optional)': product.sku or '',
             'Tags/Keywords': product.tags or [],
             'Images': product.images or [],
             'Shipping Cost': product.shipping_cost,
@@ -220,13 +219,8 @@ def get_product_detail(request, product_id):
                 'cost': product.shipping_cost,
                 'estimatedDays': product.processing_time_days,
                 'locations': product.shipping_info.locations if product.shipping_info else []
-            },
-            'affiliateCode': product.affiliate_code or ''
+            }
         }
-        
-        # Add affiliate code only if it exists
-        if product.affiliate_code:
-            product_data['Affiliate Code (Optional)'] = product.affiliate_code
         
         return Response(product_data, status=status.HTTP_200_OK)
     except ValueError as e:
@@ -250,7 +244,7 @@ def create_product(request):
         
         products = []
         for product_data in data:
-            product = ProductService.create_product(seller_id, product_data)
+            product = ProductService.create_product(seller_id, product_data, request)
             
             # Get shipping info
             shipping_info = None
@@ -317,7 +311,7 @@ def update_product(request, product_id):
     """Update product"""
     try:
         seller_id = str(request.user.id)
-        product = ProductService.update_product(product_id, seller_id, request.data)
+        product = ProductService.update_product(product_id, seller_id, request.data, request)
         
         # Get shipping info
         shipping_info = None
