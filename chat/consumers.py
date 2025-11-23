@@ -2,11 +2,14 @@
 WebSocket consumers for chat and notifications
 """
 import json
+from urllib.parse import parse_qs
+from bson import ObjectId
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from chat.services import ChatService
 from chat.models import Message, Conversation
 from authentication.models import User
+from authentication.services import JWTService
 from notifications.models import UserNotification
 
 
@@ -14,6 +17,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for chat"""
     
     async def connect(self):
+        # Get token from query parameters
+        query_string = self.scope.get('query_string', b'').decode()
+        query_params = parse_qs(query_string)
+        token = query_params.get('token', [None])[0]
+        
+        # Authenticate user if token is provided
+        if token:
+            user = await self.authenticate_user(token)
+            if not user:
+                await self.close(code=4001)  # Unauthorized
+                return
+            self.user = user
+        else:
+            # If no token, still allow connection but user will be None
+            # You can remove this else block if you want to require authentication
+            self.user = None
+        
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
         self.room_group_name = f'chat_{self.conversation_id}'
         
@@ -24,6 +44,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
         
         await self.accept()
+    
+    @database_sync_to_async
+    def authenticate_user(self, token):
+        """Authenticate user from JWT token"""
+        try:
+            payload = JWTService.verify_token(token)
+            if not payload:
+                return None
+            
+            user_id = payload.get('user_id')
+            user_type = payload.get('user_type', 'user')
+            
+            # Convert string ID to ObjectId if needed
+            try:
+                if isinstance(user_id, str):
+                    user_id = ObjectId(user_id)
+            except Exception:
+                return None
+            
+            if user_type == 'admin':
+                from authentication.models import Admin
+                return Admin.objects(id=user_id).first()
+            elif user_type == 'affiliate':
+                from authentication.models import Affiliate
+                return Affiliate.objects(id=user_id).first()
+            else:
+                return User.objects(id=user_id).first()
+        except Exception:
+            return None
     
     async def disconnect(self, close_code):
         # Leave room group
@@ -81,6 +130,23 @@ class NotificationConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for notifications"""
     
     async def connect(self):
+        # Get token from query parameters
+        query_string = self.scope.get('query_string', b'').decode()
+        query_params = parse_qs(query_string)
+        token = query_params.get('token', [None])[0]
+        
+        # Authenticate user if token is provided
+        if token:
+            user = await self.authenticate_user(token)
+            if not user:
+                await self.close(code=4001)  # Unauthorized
+                return
+            self.user = user
+        else:
+            # If no token, still allow connection but user will be None
+            # You can remove this else block if you want to require authentication
+            self.user = None
+        
         self.user_id = self.scope['url_route']['kwargs']['user_id']
         self.room_group_name = f'notifications_{self.user_id}'
         
@@ -91,6 +157,35 @@ class NotificationConsumer(AsyncWebsocketConsumer):
         )
         
         await self.accept()
+    
+    @database_sync_to_async
+    def authenticate_user(self, token):
+        """Authenticate user from JWT token"""
+        try:
+            payload = JWTService.verify_token(token)
+            if not payload:
+                return None
+            
+            user_id = payload.get('user_id')
+            user_type = payload.get('user_type', 'user')
+            
+            # Convert string ID to ObjectId if needed
+            try:
+                if isinstance(user_id, str):
+                    user_id = ObjectId(user_id)
+            except Exception:
+                return None
+            
+            if user_type == 'admin':
+                from authentication.models import Admin
+                return Admin.objects(id=user_id).first()
+            elif user_type == 'affiliate':
+                from authentication.models import Affiliate
+                return Affiliate.objects(id=user_id).first()
+            else:
+                return User.objects(id=user_id).first()
+        except Exception:
+            return None
     
     async def disconnect(self, close_code):
         # Leave room group
