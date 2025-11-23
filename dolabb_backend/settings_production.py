@@ -262,20 +262,18 @@ if REDIS_URL:
             # Fallback: sometimes token might be in username field
             password = parsed.username if parsed.username != 'default' else None
         
-        # For channels-redis 4.1.0, use dictionary format for SSL connections
-        host_config = {
-            "address": (REDIS_HOST, REDIS_PORT),
-        }
+        # For channels-redis 4.1.0, use connection string format for SSL
+        # Format: rediss://:password@host:port
         if password:
-            host_config["password"] = password
-        host_config["ssl"] = True
-        host_config["ssl_cert_reqs"] = None  # Disable certificate verification for Upstash
+            redis_url = f"rediss://:{password}@{REDIS_HOST}:{REDIS_PORT}"
+        else:
+            redis_url = f"rediss://{REDIS_HOST}:{REDIS_PORT}"
         
         CHANNEL_LAYERS = {
             'default': {
                 'BACKEND': 'channels_redis.core.RedisChannelLayer',
                 'CONFIG': {
-                    "hosts": [host_config],
+                    "hosts": [redis_url],
                 },
             },
         }
