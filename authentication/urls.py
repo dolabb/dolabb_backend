@@ -4,7 +4,7 @@ Authentication URLs
 from django.urls import path
 from authentication import views
 from authentication.otp_views import verify_otp, admin_verify_otp, user_verify_otp, affiliate_verify_otp, resend_otp
-from authentication.image_views import upload_image
+from authentication.image_views import upload_image, check_vps_config
 
 urlpatterns = [
     # Admin auth
@@ -36,5 +36,6 @@ urlpatterns = [
     
     # Image Upload
     path('upload-image/', upload_image, name='upload_image'),
+    path('check-vps-config/', check_vps_config, name='check_vps_config'),
 ]
 

@@ -90,8 +90,15 @@ def upload_image(request):
         if isinstance(vps_enabled, str):
             vps_enabled = vps_enabled.lower() == 'true'
         
+        # Debug logging
+        import logging
+        vps_host = getattr(settings, 'VPS_HOST', '')
+        vps_base_url = getattr(settings, 'VPS_BASE_URL', '')
+        logging.info(f"VPS Configuration - Enabled: {vps_enabled}, Host: {vps_host}, Base URL: {vps_base_url}")
+        
         absolute_url = None
         file_path = None
+        storage_type = 'local'  # Track storage type for debugging
         
         if vps_enabled:
             # Upload to VPS
@@ -106,17 +113,17 @@ def upload_image(request):
                 if success:
                     absolute_url = result
                     file_path = f"VPS:uploads/profiles/{unique_filename}"  # For metadata
-                    import logging
+                    storage_type = 'vps'
                     logging.info(f"Image successfully uploaded to VPS: {absolute_url}")
                 else:
                     # Fallback to local storage if VPS upload fails
-                    import logging
                     logging.warning(f"VPS upload failed, using local storage: {result}")
                     vps_enabled = False
             except Exception as e:
                 # Fallback to local storage if VPS import or upload fails
-                import logging
                 logging.error(f"VPS upload error: {str(e)}, falling back to local storage")
+                import traceback
+                logging.error(traceback.format_exc())
                 vps_enabled = False
         
         if not vps_enabled or not absolute_url:
@@ -144,8 +151,7 @@ def upload_image(request):
             file_url = f"{media_url}/uploads/profiles/{unique_filename}"
             # Build absolute URL using request's build_absolute_uri for consistency
             absolute_url = request.build_absolute_uri(file_url)
-            
-            import logging
+            storage_type = 'local'
             logging.info(f"Image saved to local storage: {absolute_url}")
         
         # Get user ID if authenticated
@@ -166,18 +172,90 @@ def upload_image(request):
         )
         uploaded_file.save()
         
-        return Response({
+        response_data = {
             'success': True,
             'message': 'Image uploaded successfully',
             'image_url': absolute_url,
             'filename': unique_filename,
-            'file_id': str(uploaded_file.id)
-        }, status=status.HTTP_201_CREATED)
+            'file_id': str(uploaded_file.id),
+            'storage_type': storage_type  # Add storage type for debugging
+        }
+        
+        # Add VPS configuration info for debugging
+        vps_config_status = getattr(settings, 'VPS_ENABLED', False)
+        if isinstance(vps_config_status, str):
+            vps_config_status = vps_config_status.lower() == 'true'
+        
+        response_data['vps_info'] = {
+            'vps_enabled': vps_config_status,
+            'vps_configured': bool(getattr(settings, 'VPS_HOST', '') and getattr(settings, 'VPS_BASE_URL', '')),
+            'vps_base_url': getattr(settings, 'VPS_BASE_URL', '') or 'Not set'
+        }
+        
+        # Add debug info if VPS is configured but not used
+        if vps_config_status and storage_type == 'local':
+            response_data['debug'] = {
+                'vps_enabled': True,
+                'vps_host': getattr(settings, 'VPS_HOST', ''),
+                'vps_base_url': getattr(settings, 'VPS_BASE_URL', ''),
+                'reason': 'VPS upload failed or not configured properly - check Render logs for details'
+            }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
         
     except Exception as e:
         return Response({
             'success': False,
             'error': f'Failed to upload image: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def check_vps_config(request):
+    """Check VPS configuration status - for debugging"""
+    try:
+        from django.conf import settings
+        
+        vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+        if isinstance(vps_enabled, str):
+            vps_enabled = vps_enabled.lower() == 'true'
+        
+        config = {
+            'vps_enabled': vps_enabled,
+            'vps_host': getattr(settings, 'VPS_HOST', ''),
+            'vps_port': getattr(settings, 'VPS_PORT', 22),
+            'vps_username': getattr(settings, 'VPS_USERNAME', ''),
+            'vps_base_path': getattr(settings, 'VPS_BASE_PATH', ''),
+            'vps_base_url': getattr(settings, 'VPS_BASE_URL', ''),
+            'has_password': bool(getattr(settings, 'VPS_PASSWORD', '')),
+            'has_key': bool(getattr(settings, 'VPS_KEY_PATH', '')),
+        }
+        
+        # Check if all required fields are set
+        required_fields = ['vps_host', 'vps_username', 'vps_base_url']
+        missing_fields = []
+        if not config.get('vps_host'):
+            missing_fields.append('vps_host')
+        if not config.get('vps_username'):
+            missing_fields.append('vps_username')
+        if not config.get('vps_base_url'):
+            missing_fields.append('vps_base_url')
+        
+        config['status'] = 'configured' if vps_enabled and not missing_fields else 'not_configured'
+        config['missing_fields'] = missing_fields
+        
+        return Response({
+            'success': True,
+            'vps_config': config,
+            'message': 'VPS configuration check completed'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logging.error(f"Error checking VPS config: {str(e)}")
+        return Response({
+            'success': False,
+            'error': f'Error checking VPS configuration: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
