@@ -183,10 +183,10 @@ def upload_image(request):
             'image_url': absolute_url,
             'filename': unique_filename,
             'file_id': str(uploaded_file.id),
-            'storage_type': storage_type  # Add storage type for debugging
+            'storage_type': storage_type
         }
         
-        # Add VPS configuration info for debugging
+        # Add VPS configuration info
         vps_config_status = getattr(settings, 'VPS_ENABLED', False)
         if isinstance(vps_config_status, str):
             vps_config_status = vps_config_status.lower() == 'true'
@@ -197,7 +197,7 @@ def upload_image(request):
             'vps_base_url': getattr(settings, 'VPS_BASE_URL', '') or 'Not set'
         }
         
-        # Add debug info if VPS is configured but not used
+        # Only add debug info if VPS is configured but upload failed (for troubleshooting)
         if vps_config_status and storage_type == 'local':
             debug_info = {
                 'vps_enabled': True,

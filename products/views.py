@@ -28,21 +28,47 @@ def get_products(request):
         elif sort_by_lower in ['newly listed', 'newest', 'new', 'newly-listed']:
             sort_by = 'newly listed'
     
-    filters = {
-        'category': request.GET.get('category'),
-        'subcategory': request.GET.get('subcategory'),
-        'brand': request.GET.get('brand'),
-        'minPrice': request.GET.get('minPrice'),
-        'maxPrice': request.GET.get('maxPrice'),
-        'size': request.GET.get('size'),
-        'color': request.GET.get('color'),
-        'condition': request.GET.get('condition'),
-        'search': request.GET.get('search'),
-        'sortBy': sort_by
-    }
+    # Build filters dictionary, removing empty strings
+    filters = {}
+    if request.GET.get('category'):
+        filters['category'] = request.GET.get('category').strip()
+    if request.GET.get('subcategory'):
+        filters['subcategory'] = request.GET.get('subcategory').strip()
+    if request.GET.get('brand'):
+        filters['brand'] = request.GET.get('brand').strip()
+    if request.GET.get('minPrice'):
+        min_price = request.GET.get('minPrice').strip()
+        if min_price:
+            filters['minPrice'] = min_price
+    if request.GET.get('maxPrice'):
+        max_price = request.GET.get('maxPrice').strip()
+        if max_price:
+            filters['maxPrice'] = max_price
+    if request.GET.get('size'):
+        filters['size'] = request.GET.get('size').strip()
+    if request.GET.get('color'):
+        filters['color'] = request.GET.get('color').strip()
+    if request.GET.get('condition'):
+        filters['condition'] = request.GET.get('condition').strip()
+    if request.GET.get('search'):
+        filters['search'] = request.GET.get('search').strip()
+    filters['sortBy'] = sort_by
     
-    page = int(request.GET.get('page', 1))
-    limit = int(request.GET.get('limit', 20))
+    try:
+        page = int(request.GET.get('page', 1))
+        if page < 1:
+            page = 1
+    except (ValueError, TypeError):
+        page = 1
+    
+    try:
+        limit = int(request.GET.get('limit', 20))
+        if limit < 1:
+            limit = 20
+        if limit > 100:  # Cap at 100 to prevent performance issues
+            limit = 100
+    except (ValueError, TypeError):
+        limit = 20
     
     try:
         user_id = None
@@ -56,63 +82,73 @@ def get_products(request):
         
         products_list = []
         for product in products:
-            is_saved = False
-            if user_id and user_id != 'None' and user_id.strip():
-                try:
-                    from bson import ObjectId
-                    user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-                    saved = SavedProduct.objects(user_id=user_obj_id, product_id=product.id).first()
-                    is_saved = saved is not None
-                except:
-                    is_saved = False
-            
-            # Handle seller_id safely
-            seller = None
-            if product.seller_id:
-                try:
-                    # Handle ReferenceField - seller_id might be an ObjectId or a User object
-                    from bson import ObjectId
-                    seller_obj_id = None
-                    if hasattr(product.seller_id, 'id'):
-                        seller_obj_id = product.seller_id.id
-                    elif isinstance(product.seller_id, ObjectId):
-                        seller_obj_id = product.seller_id
-                    elif isinstance(product.seller_id, str):
-                        seller_obj_id = ObjectId(product.seller_id)
-                    else:
-                        seller_obj_id = product.seller_id
-                    
-                    if seller_obj_id:
-                        seller = User.objects(id=seller_obj_id).first()
-                except:
-                    seller = None
-            
-            products_list.append({
-                'id': str(product.id),
-                'title': product.title,
-                'description': product.description or '',
-                'price': product.price,
-                'originalPrice': product.original_price or product.price,
-                'images': product.images or [],
-                'category': product.category,
-                'subcategory': product.subcategory or '',
-                'brand': product.brand or '',
-                'size': product.size or '',
-                'color': product.color or '',
-                'condition': product.condition,
-                'seller': {
-                    'id': str(seller.id) if seller else '',
-                    'username': seller.username if seller else '',
-                    'profileImage': seller.profile_image if seller else ''
-                },
-                'isSaved': is_saved,
-                'createdAt': product.created_at.isoformat() if product.created_at else None
-            })
+            try:
+                is_saved = False
+                if user_id and user_id != 'None' and user_id.strip():
+                    try:
+                        from bson import ObjectId
+                        user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                        saved = SavedProduct.objects(user_id=user_obj_id, product_id=product.id).first()
+                        is_saved = saved is not None
+                    except:
+                        is_saved = False
+                
+                # Handle seller_id safely
+                seller = None
+                if product.seller_id:
+                    try:
+                        # Handle ReferenceField - seller_id might be an ObjectId or a User object
+                        from bson import ObjectId
+                        seller_obj_id = None
+                        if hasattr(product.seller_id, 'id'):
+                            seller_obj_id = product.seller_id.id
+                        elif isinstance(product.seller_id, ObjectId):
+                            seller_obj_id = product.seller_id
+                        elif isinstance(product.seller_id, str):
+                            seller_obj_id = ObjectId(product.seller_id)
+                        else:
+                            seller_obj_id = product.seller_id
+                        
+                        if seller_obj_id:
+                            seller = User.objects(id=seller_obj_id).first()
+                    except:
+                        seller = None
+                
+                products_list.append({
+                    'id': str(product.id) if product.id else '',
+                    'title': product.title if product.title else '',
+                    'description': product.description or '',
+                    'price': float(product.price) if product.price else 0.0,
+                    'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
+                    'images': product.images or [],
+                    'category': product.category if product.category else '',
+                    'subcategory': product.subcategory or '',
+                    'brand': product.brand or '',
+                    'size': product.size or '',
+                    'color': product.color or '',
+                    'condition': product.condition if product.condition else '',
+                    'seller': {
+                        'id': str(seller.id) if seller and hasattr(seller, 'id') and seller.id else '',
+                        'username': seller.username if seller and hasattr(seller, 'username') else '',
+                        'profileImage': seller.profile_image if seller and hasattr(seller, 'profile_image') else ''
+                    },
+                    'isSaved': is_saved,
+                    'createdAt': product.created_at.isoformat() if product.created_at else None
+                })
+            except Exception as e:
+                # Skip products that cause errors and continue
+                import logging
+                logging.error(f"Error processing product: {str(e)}")
+                continue
         
         # Return products array directly
         return Response(products_list, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        import logging
+        logging.error(f"Error in get_products: {str(e)}")
+        return Response({'success': False, 'error': 'Internal server error. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -194,12 +230,15 @@ def get_product_detail(request, product_id):
             'Size': product.size or '',
             'Color': product.color or '',
             'Condition': product.condition,
+            'SKU/ID (Optional)': product.sku or '',
             'Tags/Keywords': product.tags or [],
             'Images': product.images or [],
             'Shipping Cost': product.shipping_cost,
             'Processing Time (days)': product.processing_time_days,
             'Shipping Locations': shipping_info['locations'] if shipping_info else [],
             'status': product.status,
+            'reviewed': product.reviewed,
+            'approved': product.approved,
             'seller_id': str(product.seller_id.id) if hasattr(product.seller_id, 'id') else str(product.seller_id),
             'seller_name': product.seller_name,
             'created_at': product.created_at.isoformat() if product.created_at else None,
@@ -217,10 +256,14 @@ def get_product_detail(request, product_id):
             'isSaved': is_saved,
             'shippingInfo': {
                 'cost': product.shipping_cost,
-                'estimatedDays': product.processing_time_days,
+                'estimatedDays': product.shipping_info.estimated_days if product.shipping_info else product.processing_time_days,
                 'locations': product.shipping_info.locations if product.shipping_info else []
             }
         }
+        
+        # Add affiliate code only if it exists
+        if product.affiliate_code:
+            product_data['Affiliate Code (Optional)'] = product.affiliate_code
         
         return Response(product_data, status=status.HTTP_200_OK)
     except ValueError as e:

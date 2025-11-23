@@ -33,6 +33,7 @@ sudo chmod -R 755 /var/www/media
 If you can't modify `/var/www/media`, use a directory in your home folder:
 
 1. **On VPS:**
+
 ```bash
 # Create directory in home folder
 mkdir -p ~/media/uploads/profiles
@@ -42,11 +43,13 @@ chmod -R 755 ~/media
 ```
 
 2. **Update Render Environment Variables:**
+
 ```
 VPS_BASE_PATH=/home/dolabbadmin/media
 ```
 
 3. **Update Nginx Configuration:**
+
 ```nginx
 location /media/ {
     alias /home/dolabbadmin/media/;
@@ -90,4 +93,3 @@ If the last two commands work, permissions are correct!
 1. Test upload again - should work now
 2. Image URL should be: `https://www.dolabb.com/media/uploads/profiles/...`
 3. Check that files appear in `/var/www/media/uploads/profiles/` on VPS
-

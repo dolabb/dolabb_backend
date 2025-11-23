@@ -69,7 +69,12 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
             logger.error(error_msg)
             return False, error_msg
         except Exception as e:
-            error_msg = f"VPS connection failed: {str(e)}. Check VPS_HOST, VPS_PORT, and network connectivity"
+            error_str = str(e)
+            # Provide more helpful error message for DNS resolution failures
+            if "Name or service not known" in error_str or "[Errno -2]" in error_str:
+                error_msg = f"VPS hostname cannot be resolved: {vps_host}. Try using the IP address directly (e.g., 175.161.178.68) instead of hostname. Error: {error_str}"
+            else:
+                error_msg = f"VPS connection failed: {error_str}. Check VPS_HOST, VPS_PORT, and network connectivity"
             logger.error(error_msg)
             return False, error_msg
         

@@ -7,6 +7,7 @@ from affiliates import views
 urlpatterns = [
     path('validate-code/', views.validate_affiliate_code, name='validate_affiliate_code'),
     path('cashout/', views.request_cashout, name='request_cashout'),
+    path('profile/', views.affiliate_profile, name='affiliate_profile'),
     path('all/', views.get_all_affiliates, name='get_all_affiliates'),
     path('<str:affiliate_id>/transactions/', views.get_affiliate_transactions, name='get_affiliate_transactions'),
     path('<str:affiliate_id>/update-commission/', views.update_commission_rate, name='update_commission_rate'),

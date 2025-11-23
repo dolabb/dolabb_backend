@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from affiliates.services import AffiliateService
 from authentication.models import Affiliate
+from authentication.services import AuthService
 from admin_dashboard.views import check_admin
 
 
@@ -215,4 +216,139 @@ def reject_payout(request, payout_id):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Helper functions for profile views
+def get_date_safe(obj, *attrs):
+    """Helper function to safely get date"""
+    for attr in attrs:
+        val = getattr(obj, attr, None)
+        if val:
+            try:
+                return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+            except:
+                return str(val)
+    return ''
+
+def safe_get(obj, attr, default=''):
+    """Helper function to safely get attribute"""
+    try:
+        val = getattr(obj, attr, default)
+        return val if val is not None else default
+    except:
+        return default
+
+def normalize_image_url(url, request):
+    """Helper function to normalize profile image URL"""
+    if not url or url == '':
+        return ''
+    # If URL is already absolute, return as is
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    # If URL is relative, make it absolute using current request
+    if url.startswith('/'):
+        return request.build_absolute_uri(url)
+    # If URL doesn't start with /, add /media/ prefix if it's a media file
+    if 'uploads' in url or 'profiles' in url:
+        return request.build_absolute_uri(f'/media/{url}')
+    return url
+
+def format_affiliate_response(affiliate, request):
+    """Format affiliate data for response"""
+    total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+    pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+    paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+    code_usage_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
+    commission_rate = float(affiliate.commission_rate) if affiliate.commission_rate else 0.0
+    
+    return {
+        'id': str(affiliate.id),
+        'full_name': safe_get(affiliate, 'full_name'),
+        'email': safe_get(affiliate, 'email'),
+        'phone': safe_get(affiliate, 'phone'),
+        'country_code': safe_get(affiliate, 'country_code'),
+        'affiliate_code': safe_get(affiliate, 'affiliate_code'),
+        'profile_image': normalize_image_url(safe_get(affiliate, 'profile_image') or '', request),
+        'totalEarnings': total_earnings,
+        'totalCommissions': total_earnings,
+        'pendingEarnings': pending_earnings,
+        'paidEarnings': paid_earnings,
+        'codeUsageCount': code_usage_count,
+        'availableBalance': pending_earnings,
+        'commission_rate': commission_rate,
+        'status': safe_get(affiliate, 'status', 'active'),
+        'bank_details': {
+            'bank_name': safe_get(affiliate, 'bank_name'),
+            'account_number': safe_get(affiliate, 'account_number'),
+            'iban': safe_get(affiliate, 'iban'),
+            'account_holder_name': safe_get(affiliate, 'account_holder_name')
+        },
+        'created_at': get_date_safe(affiliate, 'created_at'),
+        'last_activity': get_date_safe(affiliate, 'last_activity')
+    }
+
+
+@api_view(['GET', 'PUT'])
+def affiliate_profile(request):
+    """Get or update affiliate profile (authenticated affiliate only)"""
+    try:
+        affiliate = request.user
+        
+        # Verify user is an affiliate
+        if not affiliate or not hasattr(affiliate, 'affiliate_code'):
+            return Response({'success': False, 'error': 'Unauthorized. Affiliate access required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if request.method == 'GET':
+            # GET: Return affiliate profile
+            return Response({
+                'success': True,
+                'affiliate': format_affiliate_response(affiliate, request)
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'PUT':
+            # PUT: Update affiliate profile
+            data = request.data
+            
+            # Update allowed fields
+            if 'full_name' in data:
+                affiliate.full_name = data['full_name']
+            if 'phone' in data:
+                affiliate.phone = data['phone']
+            if 'country_code' in data:
+                affiliate.country_code = data['country_code']
+            if 'profile_image' in data or 'profile_image_url' in data:
+                # Process base64 image if needed
+                image_data = data.get('profile_image') or data.get('profile_image_url')
+                if image_data:
+                    processed_image = AuthService.process_profile_image(image_data, request)
+                    affiliate.profile_image = processed_image if processed_image else image_data
+            if 'bank_name' in data:
+                affiliate.bank_name = data['bank_name']
+            if 'account_number' in data:
+                affiliate.account_number = data['account_number']
+            if 'iban' in data:
+                affiliate.iban = data['iban']
+            if 'account_holder_name' in data:
+                affiliate.account_holder_name = data['account_holder_name']
+            
+            # Update last activity
+            from datetime import datetime
+            affiliate.last_activity = datetime.utcnow()
+            
+            affiliate.save()
+            
+            return Response({
+                'success': True,
+                'message': 'Profile updated successfully',
+                'affiliate': format_affiliate_response(affiliate, request)
+            }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        from django.conf import settings
+        return Response({
+            'success': False, 
+            'error': f'Server error: {str(e)}',
+            'traceback': traceback.format_exc() if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

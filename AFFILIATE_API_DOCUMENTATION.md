@@ -202,7 +202,142 @@ Authorization: Bearer <your_jwt_token>
 
 ## Affiliate Management Endpoints
 
-### 5. Validate Affiliate Code
+### 5. Get Affiliate Profile
+
+**Endpoint:** `GET /api/affiliate/profile/`
+
+**Headers:**
+
+```
+Authorization: Bearer <token>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "affiliate": {
+    "id": "affiliate_id",
+    "full_name": "Affiliate Name",
+    "email": "affiliate@example.com",
+    "phone": "+1234567890",
+    "country_code": "US",
+    "affiliate_code": "AFF123",
+    "profile_image": "https://example.com/image.jpg",
+    "totalEarnings": 1000.0,
+    "totalCommissions": 1000.0,
+    "pendingEarnings": 500.0,
+    "paidEarnings": 500.0,
+    "codeUsageCount": 50,
+    "availableBalance": 500.0,
+    "commission_rate": 25.0,
+    "status": "active",
+    "bank_details": {
+      "bank_name": "Bank Name",
+      "account_number": "123456789",
+      "iban": "IBAN123",
+      "account_holder_name": "Affiliate Name"
+    },
+    "created_at": "2024-01-01T00:00:00Z",
+    "last_activity": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**Response (401 Unauthorized):**
+
+```json
+{
+  "success": false,
+  "error": "Unauthorized. Affiliate access required."
+}
+```
+
+**Toast Message:** `"Profile loaded successfully"`
+
+---
+
+### 6. Update Affiliate Profile
+
+**Endpoint:** `PUT /api/affiliate/profile/`
+
+**Headers:**
+
+```
+Authorization: Bearer <token>
+```
+
+**Request Body:**
+
+```json
+{
+  "full_name": "Updated Name",
+  "phone": "+1234567890",
+  "country_code": "US",
+  "profile_image": "https://example.com/image.jpg",
+  "bank_name": "Bank Name",
+  "account_number": "123456789",
+  "iban": "IBAN123",
+  "account_holder_name": "Affiliate Name"
+}
+```
+
+**Note:**
+
+- All fields are optional - only include fields you want to update
+- `profile_image` can be either:
+  - A URL to an existing image
+  - A base64 encoded image string (will be automatically converted to URL)
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "affiliate": {
+    "id": "affiliate_id",
+    "full_name": "Updated Name",
+    "email": "affiliate@example.com",
+    "phone": "+1234567890",
+    "country_code": "US",
+    "affiliate_code": "AFF123",
+    "profile_image": "https://example.com/image.jpg",
+    "totalEarnings": 1000.0,
+    "totalCommissions": 1000.0,
+    "pendingEarnings": 500.0,
+    "paidEarnings": 500.0,
+    "codeUsageCount": 50,
+    "availableBalance": 500.0,
+    "commission_rate": 25.0,
+    "status": "active",
+    "bank_details": {
+      "bank_name": "Bank Name",
+      "account_number": "123456789",
+      "iban": "IBAN123",
+      "account_holder_name": "Affiliate Name"
+    },
+    "created_at": "2024-01-01T00:00:00Z",
+    "last_activity": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**Response (401 Unauthorized):**
+
+```json
+{
+  "success": false,
+  "error": "Unauthorized. Affiliate access required."
+}
+```
+
+**Toast Message:** `"Profile updated successfully!"`
+
+---
+
+### 7. Validate Affiliate Code
 
 **Endpoint:** `POST /api/affiliate/validate-code/`
 
@@ -241,7 +376,7 @@ Authorization: Bearer <your_jwt_token>
 
 ## Transactions & Earnings Endpoints
 
-### 6. Get Affiliate Transactions
+### 8. Get Affiliate Transactions
 
 **Endpoint:** `GET /api/affiliate/{affiliate_id}/transactions/`
 
@@ -289,7 +424,7 @@ earnings through the login response.
 
 ## Payouts Endpoints
 
-### 7. Request Cashout
+### 9. Request Cashout
 
 **Endpoint:** `POST /api/affiliate/cashout/`
 
@@ -336,7 +471,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 8. Get Payout Requests
+### 10. Get Payout Requests
 
 **Endpoint:** `GET /api/affiliate/payout-requests/`
 
@@ -428,6 +563,7 @@ All API endpoints follow a consistent error response format:
 | Affiliate Login   | "Welcome back, {full_name}!"                                                       |
 | OTP Verified      | "Email verified successfully! Your account is now active."                         |
 | OTP Resent        | "OTP has been resent to your email."                                               |
+| Profile Updated   | "Profile updated successfully!"                                                    |
 | Cashout Requested | "Cashout request submitted! Waiting for admin approval."                           |
 | Code Validated    | "Affiliate code is valid"                                                          |
 
