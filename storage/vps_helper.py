@@ -50,20 +50,38 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
-        if vps_key_path and os.path.exists(vps_key_path):
-            ssh.connect(vps_host, port=vps_port, username=vps_username, key_filename=vps_key_path, timeout=10)
-        elif vps_password:
-            ssh.connect(vps_host, port=vps_port, username=vps_username, password=vps_password, timeout=10)
-        else:
-            return False, "Either VPS_PASSWORD or VPS_KEY_PATH must be set"
+        try:
+            if vps_key_path and os.path.exists(vps_key_path):
+                logger.info(f"Attempting SSH connection to {vps_host}:{vps_port} with key file")
+                ssh.connect(vps_host, port=vps_port, username=vps_username, key_filename=vps_key_path, timeout=30)
+            elif vps_password:
+                logger.info(f"Attempting SSH connection to {vps_host}:{vps_port} with password")
+                ssh.connect(vps_host, port=vps_port, username=vps_username, password=vps_password, timeout=30)
+            else:
+                return False, "Either VPS_PASSWORD or VPS_KEY_PATH must be set"
+            logger.info(f"SSH connection successful to {vps_host}")
+        except paramiko.AuthenticationException as e:
+            error_msg = f"VPS Authentication failed: {str(e)}. Check VPS_USERNAME and VPS_PASSWORD/VPS_KEY_PATH"
+            logger.error(error_msg)
+            return False, error_msg
+        except paramiko.SSHException as e:
+            error_msg = f"VPS SSH connection error: {str(e)}. Check VPS_HOST ({vps_host}) and network connectivity"
+            logger.error(error_msg)
+            return False, error_msg
+        except Exception as e:
+            error_msg = f"VPS connection failed: {str(e)}. Check VPS_HOST, VPS_PORT, and network connectivity"
+            logger.error(error_msg)
+            return False, error_msg
         
         sftp = ssh.open_sftp()
         
         # Ensure directory exists
         try:
             sftp.stat(remote_dir)
+            logger.info(f"Directory exists: {remote_dir}")
         except IOError:
             # Create directory structure
+            logger.info(f"Creating directory structure: {remote_dir}")
             parts = remote_dir.strip('/').split('/')
             current_path = ''
             for part in parts:
@@ -74,11 +92,28 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
                 try:
                     sftp.stat(current_path)
                 except IOError:
-                    sftp.mkdir(current_path)
+                    try:
+                        sftp.mkdir(current_path)
+                        logger.info(f"Created directory: {current_path}")
+                    except Exception as e:
+                        error_msg = f"Failed to create directory {current_path}: {str(e)}. Check permissions on VPS"
+                        logger.error(error_msg)
+                        return False, error_msg
         
         # Write file
-        with sftp.open(full_remote_path, 'wb') as remote_file:
-            remote_file.write(file_content)
+        try:
+            logger.info(f"Writing file to VPS: {full_remote_path}")
+            with sftp.open(full_remote_path, 'wb') as remote_file:
+                remote_file.write(file_content)
+            logger.info(f"File written successfully: {full_remote_path}")
+        except IOError as e:
+            error_msg = f"Failed to write file to VPS: {str(e)}. Check directory permissions on VPS ({remote_dir})"
+            logger.error(error_msg)
+            return False, error_msg
+        except Exception as e:
+            error_msg = f"Failed to write file to VPS: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
         
         # Build URL - ensure proper formatting
         # Remove trailing slashes and ensure single slash between parts
@@ -89,9 +124,19 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
         logger.info(f"File uploaded to VPS: {full_remote_path}, URL: {file_url}")
         return True, file_url
         
+    except paramiko.AuthenticationException as e:
+        error_msg = f"VPS Authentication failed: {str(e)}. Check VPS_USERNAME and VPS_PASSWORD/VPS_KEY_PATH"
+        logger.error(error_msg)
+        return False, error_msg
+    except paramiko.SSHException as e:
+        error_msg = f"VPS SSH connection error: {str(e)}. Check VPS_HOST and network connectivity"
+        logger.error(error_msg)
+        return False, error_msg
     except Exception as e:
         error_msg = f"Failed to upload file to VPS: {str(e)}"
         logger.error(error_msg)
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return False, error_msg
     finally:
         if sftp:

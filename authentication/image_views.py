@@ -99,6 +99,7 @@ def upload_image(request):
         absolute_url = None
         file_path = None
         storage_type = 'local'  # Track storage type for debugging
+        vps_upload_error = None  # Store VPS upload error if any
         
         if vps_enabled:
             # Upload to VPS
@@ -117,10 +118,14 @@ def upload_image(request):
                     logging.info(f"Image successfully uploaded to VPS: {absolute_url}")
                 else:
                     # Fallback to local storage if VPS upload fails
-                    logging.warning(f"VPS upload failed, using local storage: {result}")
+                    vps_error_message = result  # This contains the error message
+                    logging.warning(f"VPS upload failed, using local storage: {vps_error_message}")
                     vps_enabled = False
+                    # Store error for debug response
+                    vps_upload_error = vps_error_message
             except Exception as e:
                 # Fallback to local storage if VPS import or upload fails
+                vps_upload_error = f"VPS upload exception: {str(e)}"
                 logging.error(f"VPS upload error: {str(e)}, falling back to local storage")
                 import traceback
                 logging.error(traceback.format_exc())
@@ -194,12 +199,16 @@ def upload_image(request):
         
         # Add debug info if VPS is configured but not used
         if vps_config_status and storage_type == 'local':
-            response_data['debug'] = {
+            debug_info = {
                 'vps_enabled': True,
                 'vps_host': getattr(settings, 'VPS_HOST', ''),
                 'vps_base_url': getattr(settings, 'VPS_BASE_URL', ''),
-                'reason': 'VPS upload failed or not configured properly - check Render logs for details'
+                'reason': 'VPS upload failed or not configured properly'
             }
+            if vps_upload_error:
+                debug_info['error'] = vps_upload_error
+                debug_info['reason'] = vps_upload_error
+            response_data['debug'] = debug_info
         
         return Response(response_data, status=status.HTTP_201_CREATED)
         
