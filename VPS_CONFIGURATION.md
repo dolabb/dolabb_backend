@@ -10,14 +10,14 @@ VPS_HOST=your-vps-ip-or-domain
 VPS_PORT=22
 VPS_USERNAME=your-ssh-username
 VPS_PASSWORD=your-ssh-password
-VPS_BASE_PATH=/var/www/media
+VPS_BASE_PATH=/home/dolabbadmin/public_html/media
 VPS_BASE_URL=https://www.dolabb.com/media
 ```
 
 **Important Notes:**
 - `VPS_BASE_URL` should be `https://www.dolabb.com/media` (no trailing slash)
 - `VPS_ENABLED` must be exactly `true` (lowercase)
-- Make sure your VPS has the directories created: `/var/www/media/uploads/profiles`
+- Make sure your VPS has the directories created: `public_html/media/uploads/profiles` (with 755 permissions)
 
 ## Expected Response After Configuration
 
@@ -41,7 +41,7 @@ If you're still getting Render URLs:
 2. **Check VPS_BASE_URL**: Should be `https://www.dolabb.com/media` (no trailing slash)
 3. **Check VPS credentials**: Verify SSH connection works
 4. **Check logs**: Look for "VPS upload failed" warnings in Render logs
-5. **Verify VPS directory exists**: `/var/www/media/uploads/profiles` must exist and be writable
+5. **Verify VPS directory exists**: `public_html/media/uploads/profiles` must exist and be writable (755 permissions)
 
 ## Testing VPS Connection
 
@@ -49,13 +49,18 @@ You can test if VPS is working by checking the Render logs after uploading an im
 - `"Image successfully uploaded to VPS: https://www.dolabb.com/media/..."` if successful
 - `"VPS upload failed, using local storage: ..."` if there's an issue
 
-## Nginx Configuration on VPS
+## Web Server Configuration on VPS
 
-Make sure your Nginx is configured to serve files from `/var/www/media`:
+Make sure your web server (Apache/Nginx) is configured to serve files from `public_html/media`:
 
+**For Apache (typical GoDaddy setup):**
+- Files in `public_html/media/` are automatically served at `https://www.dolabb.com/media/`
+- No additional configuration needed if `public_html` is your document root
+
+**For Nginx:**
 ```nginx
 location /media/ {
-    alias /var/www/media/;
+    alias /home/dolabbadmin/public_html/media/;
     expires 30d;
     add_header Cache-Control "public, immutable";
 }

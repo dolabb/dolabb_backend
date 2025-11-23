@@ -129,7 +129,7 @@ VPS_PORT = int(os.getenv('VPS_PORT', '22'))
 VPS_USERNAME = os.getenv('VPS_USERNAME', '')
 VPS_PASSWORD = os.getenv('VPS_PASSWORD', '')
 VPS_KEY_PATH = os.getenv('VPS_KEY_PATH', '')
-VPS_BASE_PATH = os.getenv('VPS_BASE_PATH', '/var/www/media')
+VPS_BASE_PATH = os.getenv('VPS_BASE_PATH', '/home/dolabbadmin/public_html/media')  # Default for GoDaddy VPS
 VPS_BASE_URL = os.getenv('VPS_BASE_URL', '')  # e.g., 'https://www.dolabb.com/media'
 
 # Default primary key field type

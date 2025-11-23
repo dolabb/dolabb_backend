@@ -27,7 +27,7 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
     vps_username = getattr(settings, 'VPS_USERNAME', None)
     vps_password = getattr(settings, 'VPS_PASSWORD', None)
     vps_key_path = getattr(settings, 'VPS_KEY_PATH', None)
-    vps_base_path = getattr(settings, 'VPS_BASE_PATH', '/var/www/media')
+    vps_base_path = getattr(settings, 'VPS_BASE_PATH', '/home/dolabbadmin/public_html/media')  # Default for GoDaddy VPS
     vps_base_url = getattr(settings, 'VPS_BASE_URL', None)
     
     if not all([vps_host, vps_username, vps_base_url]):
@@ -165,7 +165,7 @@ def delete_file_from_vps(remote_path):
     vps_username = getattr(settings, 'VPS_USERNAME', None)
     vps_password = getattr(settings, 'VPS_PASSWORD', None)
     vps_key_path = getattr(settings, 'VPS_KEY_PATH', None)
-    vps_base_path = getattr(settings, 'VPS_BASE_PATH', '/var/www/media')
+    vps_base_path = getattr(settings, 'VPS_BASE_PATH', '/home/dolabbadmin/public_html/media')  # Default for GoDaddy VPS
     
     if not all([vps_host, vps_username]):
         return False
