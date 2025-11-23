@@ -53,11 +53,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.conversation_id = conversation_id
             self.room_group_name = f'chat_{self.conversation_id}'
             
+            # Check if channel_layer is available
+            if not self.channel_layer:
+                logger.error("Channel layer is not configured - Redis connection may be missing")
+                await self.accept()
+                await self.close(code=1011)  # Internal error
+                return
+            
             # Join room group
-            await self.channel_layer.group_add(
-                self.room_group_name,
-                self.channel_name
-            )
+            try:
+                await self.channel_layer.group_add(
+                    self.room_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                logger.error(f"Failed to join channel layer group: {str(e)}", exc_info=True)
+                # Still accept connection even if Redis fails
+                # Messages won't be broadcasted but direct messages will work
+                logger.warning("Continuing without channel layer group (Redis may be unavailable)")
             
             await self.accept()
             logger.info(f"WebSocket connected successfully - conversation_id: {self.conversation_id}")
@@ -186,11 +199,22 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             self.user_id = self.scope['url_route']['kwargs']['user_id']
             self.room_group_name = f'notifications_{self.user_id}'
             
+            # Check if channel_layer is available
+            if not self.channel_layer:
+                logger.error("Channel layer is not configured - Redis connection may be missing")
+                await self.accept()
+                await self.close(code=1011)  # Internal error
+                return
+            
             # Join room group
-            await self.channel_layer.group_add(
-                self.room_group_name,
-                self.channel_name
-            )
+            try:
+                await self.channel_layer.group_add(
+                    self.room_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                logger.error(f"Failed to join channel layer group: {str(e)}", exc_info=True)
+                logger.warning("Continuing without channel layer group (Redis may be unavailable)")
             
             await self.accept()
             logger.info(f"Notification WebSocket connected successfully - user_id: {self.user_id}")
