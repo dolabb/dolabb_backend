@@ -80,10 +80,13 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
         with sftp.open(full_remote_path, 'wb') as remote_file:
             remote_file.write(file_content)
         
-        # Build URL
-        file_url = f"{vps_base_url.rstrip('/')}/{remote_path}/{file_name}"
+        # Build URL - ensure proper formatting
+        # Remove trailing slashes and ensure single slash between parts
+        base_url = vps_base_url.rstrip('/')
+        remote_path_clean = remote_path.strip('/')
+        file_url = f"{base_url}/{remote_path_clean}/{file_name}"
         
-        logger.info(f"File uploaded to VPS: {full_remote_path}")
+        logger.info(f"File uploaded to VPS: {full_remote_path}, URL: {file_url}")
         return True, file_url
         
     except Exception as e:

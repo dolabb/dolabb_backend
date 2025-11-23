@@ -89,12 +89,12 @@ In your Render.com dashboard:
 
 ```
 VPS_ENABLED=true
-VPS_HOST=your-vps-ip-or-domain
+VPS_HOST=175.161.178.68.host.secureserver.net
 VPS_PORT=22
-VPS_USERNAME=your-ssh-username
-VPS_PASSWORD=your-ssh-password
+VPS_USERNAME=dolabbadmin
+VPS_PASSWORD=FradDolab1@
 VPS_BASE_PATH=/var/www/media
-VPS_BASE_URL=https://your-vps-domain.com/media
+VPS_BASE_URL=https://www.dolabb.com/media
 ```
 
 **Security Note**: For better security, use SSH key authentication instead of

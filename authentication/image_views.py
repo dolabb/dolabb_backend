@@ -86,27 +86,40 @@ def upload_image(request):
         
         # Try to upload to VPS if configured, otherwise use local storage
         vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+        # Handle string 'true'/'false' from environment variables
+        if isinstance(vps_enabled, str):
+            vps_enabled = vps_enabled.lower() == 'true'
+        
         absolute_url = None
+        file_path = None
         
         if vps_enabled:
             # Upload to VPS
-            from storage.vps_helper import upload_file_to_vps
-            success, result = upload_file_to_vps(
-                image_bytes,
-                'uploads/profiles',
-                unique_filename
-            )
-            
-            if success:
-                absolute_url = result
-                file_path = f"VPS:uploads/profiles/{unique_filename}"  # For metadata
-            else:
-                # Fallback to local storage if VPS upload fails
+            try:
+                from storage.vps_helper import upload_file_to_vps
+                success, result = upload_file_to_vps(
+                    image_bytes,
+                    'uploads/profiles',
+                    unique_filename
+                )
+                
+                if success:
+                    absolute_url = result
+                    file_path = f"VPS:uploads/profiles/{unique_filename}"  # For metadata
+                    import logging
+                    logging.info(f"Image successfully uploaded to VPS: {absolute_url}")
+                else:
+                    # Fallback to local storage if VPS upload fails
+                    import logging
+                    logging.warning(f"VPS upload failed, using local storage: {result}")
+                    vps_enabled = False
+            except Exception as e:
+                # Fallback to local storage if VPS import or upload fails
                 import logging
-                logging.warning(f"VPS upload failed, using local storage: {result}")
+                logging.error(f"VPS upload error: {str(e)}, falling back to local storage")
                 vps_enabled = False
         
-        if not vps_enabled:
+        if not vps_enabled or not absolute_url:
             # Local storage fallback
             upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'profiles')
             os.makedirs(upload_dir, exist_ok=True)
@@ -131,6 +144,9 @@ def upload_image(request):
             file_url = f"{media_url}/uploads/profiles/{unique_filename}"
             # Build absolute URL using request's build_absolute_uri for consistency
             absolute_url = request.build_absolute_uri(file_url)
+            
+            import logging
+            logging.info(f"Image saved to local storage: {absolute_url}")
         
         # Get user ID if authenticated
         uploaded_by = None
