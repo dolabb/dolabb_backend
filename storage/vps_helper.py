@@ -91,12 +91,17 @@ def upload_file_to_vps(file_content, remote_path, file_name=None):
                     current_path = f"/{part}"
                 try:
                     sftp.stat(current_path)
+                    logger.info(f"Directory exists: {current_path}")
                 except IOError:
                     try:
                         sftp.mkdir(current_path)
                         logger.info(f"Created directory: {current_path}")
+                    except PermissionError as e:
+                        error_msg = f"Permission denied creating directory {current_path}. SSH user needs write access. Run on VPS: sudo mkdir -p {current_path} && sudo chown -R {vps_username}:{vps_username} {current_path}"
+                        logger.error(error_msg)
+                        return False, error_msg
                     except Exception as e:
-                        error_msg = f"Failed to create directory {current_path}: {str(e)}. Check permissions on VPS"
+                        error_msg = f"Failed to create directory {current_path}: {str(e)}. Check permissions on VPS. Run: sudo mkdir -p {remote_dir} && sudo chown -R {vps_username}:{vps_username} {remote_dir}"
                         logger.error(error_msg)
                         return False, error_msg
         
