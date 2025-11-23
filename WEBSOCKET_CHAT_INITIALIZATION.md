@@ -182,11 +182,12 @@ if (!existingConversation) {
 
 #### Step 3: Connect to WebSocket
 
-Once you have the `conversationId`, connect to the WebSocket:
+Once you have the `conversationId`, connect to the WebSocket **with
+authentication token**:
 
 ```javascript
 const ws = new WebSocket(
-  `wss://dolabb-backend.onrender.com/ws/chat/${conversationId}/`
+  `wss://dolabb-backend.onrender.com/ws/chat/${conversationId}/?token=${your_jwt_token}`
 );
 
 ws.onopen = () => {
@@ -320,7 +321,7 @@ class ChatService {
     }
 
     this.ws = new WebSocket(
-      `wss://dolabb-backend.onrender.com/ws/chat/${this.conversationId}/`
+      `wss://dolabb-backend.onrender.com/ws/chat/${this.conversationId}/?token=${this.token}`
     );
 
     this.ws.onopen = () => {
@@ -454,6 +455,341 @@ However, **this approach is not recommended** because:
   }
 }
 ```
+
+---
+
+## 💰 Offer Management via WebSocket
+
+You can send offers, counter offers, accept, and reject offers directly through
+WebSocket for real-time negotiation.
+
+### ⚠️ Important: Authentication Required
+
+**All WebSocket connections now require authentication.** You must include your
+JWT token in the WebSocket URL:
+
+```javascript
+const ws = new WebSocket(
+  `wss://dolabb-backend.onrender.com/ws/chat/${conversationId}/?token=${your_jwt_token}`
+);
+```
+
+Without a valid token, the connection will be rejected with code `4001`
+(Unauthorized).
+
+---
+
+### 1. Send Offer
+
+**Message Type:** `send_offer`
+
+**Who can send:** Buyer
+
+**Request:**
+
+```json
+{
+  "type": "send_offer",
+  "productId": "507f1f77bcf86cd799439011",
+  "offerAmount": 150.0,
+  "receiverId": "507f1f77bcf86cd799439012",
+  "text": "I'd like to offer $150 for this product", // Optional
+  "shippingAddress": "123 Main St", // Optional
+  "zipCode": "12345", // Optional
+  "houseNumber": "Apt 4B" // Optional
+}
+```
+
+**Response (broadcasted to all connected users in conversation):**
+
+```json
+{
+  "type": "offer_sent",
+  "offer": {
+    "id": "691c7f0be8c4f33957183a49",
+    "productId": "507f1f77bcf86cd799439011",
+    "buyerId": "507f1f77bcf86cd799439010",
+    "sellerId": "507f1f77bcf86cd799439012",
+    "offerAmount": 150.0,
+    "originalPrice": 200.0,
+    "status": "pending",
+    "createdAt": "2025-11-18T14:13:30.161000"
+  },
+  "message": {
+    "id": "691c7f0be8c4f33957183a50",
+    "text": "Made an offer of $150",
+    "timestamp": "2025-11-18T14:13:30.161000"
+  }
+}
+```
+
+**JavaScript Example:**
+
+```javascript
+function sendOffer(productId, offerAmount, receiverId, shippingDetails = {}) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: 'send_offer',
+        productId: productId,
+        offerAmount: offerAmount,
+        receiverId: receiverId,
+        text: `I'd like to offer $${offerAmount} for this product`,
+        shippingAddress: shippingDetails.address,
+        zipCode: shippingDetails.zipCode,
+        houseNumber: shippingDetails.houseNumber,
+      })
+    );
+  }
+}
+```
+
+---
+
+### 2. Counter Offer
+
+**Message Type:** `counter_offer`
+
+**Who can send:** Seller (in response to buyer's offer)
+
+**Request:**
+
+```json
+{
+  "type": "counter_offer",
+  "offerId": "691c7f0be8c4f33957183a49",
+  "counterAmount": 175.0,
+  "receiverId": "507f1f77bcf86cd799439010",
+  "text": "I can do $175" // Optional
+}
+```
+
+**Response (broadcasted to all connected users in conversation):**
+
+```json
+{
+  "type": "offer_countered",
+  "offer": {
+    "id": "691c7f0be8c4f33957183a49",
+    "counterAmount": 175.0,
+    "status": "countered",
+    "updatedAt": "2025-11-18T14:15:30.161000"
+  },
+  "message": {
+    "id": "691c7f0be8c4f33957183a51",
+    "text": "Countered with $175",
+    "timestamp": "2025-11-18T14:15:30.161000"
+  }
+}
+```
+
+**JavaScript Example:**
+
+```javascript
+function counterOffer(offerId, counterAmount, receiverId) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: 'counter_offer',
+        offerId: offerId,
+        counterAmount: counterAmount,
+        receiverId: receiverId,
+        text: `I can do $${counterAmount}`,
+      })
+    );
+  }
+}
+```
+
+---
+
+### 3. Accept Offer
+
+**Message Type:** `accept_offer`
+
+**Who can send:**
+
+- **Seller** can accept buyer's original offer (when status is `pending`)
+- **Buyer** can accept seller's counter offer (when status is `countered`)
+
+**Request:**
+
+```json
+{
+  "type": "accept_offer",
+  "offerId": "691c7f0be8c4f33957183a49",
+  "receiverId": "507f1f77bcf86cd799439010",
+  "text": "Deal! Let's proceed with the purchase" // Optional
+}
+```
+
+**Response (broadcasted to all connected users in conversation):**
+
+```json
+{
+  "type": "offer_accepted",
+  "offer": {
+    "id": "691c7f0be8c4f33957183a49",
+    "status": "accepted",
+    "updatedAt": "2025-11-18T14:20:30.161000"
+  },
+  "message": {
+    "id": "691c7f0be8c4f33957183a52",
+    "text": "Offer accepted",
+    "timestamp": "2025-11-18T14:20:30.161000"
+  }
+}
+```
+
+**JavaScript Example:**
+
+```javascript
+function acceptOffer(offerId, receiverId) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: 'accept_offer',
+        offerId: offerId,
+        receiverId: receiverId,
+        text: "Deal! Let's proceed",
+      })
+    );
+  }
+}
+```
+
+---
+
+### 4. Reject Offer
+
+**Message Type:** `reject_offer`
+
+**Who can send:** Seller (rejecting buyer's offer)
+
+**Request:**
+
+```json
+{
+  "type": "reject_offer",
+  "offerId": "691c7f0be8c4f33957183a49",
+  "receiverId": "507f1f77bcf86cd799439010",
+  "text": "Sorry, I can't accept this offer" // Optional
+}
+```
+
+**Response (broadcasted to all connected users in conversation):**
+
+```json
+{
+  "type": "offer_rejected",
+  "offer": {
+    "id": "691c7f0be8c4f33957183a49",
+    "status": "rejected",
+    "updatedAt": "2025-11-18T14:25:30.161000"
+  },
+  "message": {
+    "id": "691c7f0be8c4f33957183a53",
+    "text": "Offer rejected",
+    "timestamp": "2025-11-18T14:25:30.161000"
+  }
+}
+```
+
+**JavaScript Example:**
+
+```javascript
+function rejectOffer(offerId, receiverId) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: 'reject_offer',
+        offerId: offerId,
+        receiverId: receiverId,
+        text: "Sorry, I can't accept this offer",
+      })
+    );
+  }
+}
+```
+
+---
+
+### 📋 Complete Offer Flow Example
+
+```javascript
+// Initialize WebSocket with authentication
+const ws = new WebSocket(
+  `wss://dolabb-backend.onrender.com/ws/chat/${conversationId}/?token=${token}`
+);
+
+ws.onmessage = event => {
+  const data = JSON.parse(event.data);
+
+  switch (data.type) {
+    case 'offer_sent':
+      console.log('New offer:', data.offer);
+      // Update UI to show offer
+      break;
+
+    case 'offer_countered':
+      console.log('Counter offer:', data.offer);
+      // Update UI to show counter offer
+      // Buyer can now accept or make new offer
+      break;
+
+    case 'offer_accepted':
+      console.log('Offer accepted!', data.offer);
+      // Update UI, proceed to checkout
+      break;
+
+    case 'offer_rejected':
+      console.log('Offer rejected', data.offer);
+      // Update UI
+      break;
+
+    case 'error':
+      console.error('Error:', data.message);
+      break;
+  }
+};
+
+// Buyer sends offer
+sendOffer('product123', 150.0, 'seller456', {
+  address: '123 Main St',
+  zipCode: '12345',
+  houseNumber: 'Apt 4B',
+});
+
+// Seller counters
+counterOffer('offer789', 175.0, 'buyer123');
+
+// Buyer accepts counter
+acceptOffer('offer789', 'seller456');
+```
+
+---
+
+### ⚠️ Error Handling
+
+All offer operations return error messages if something goes wrong:
+
+```json
+{
+  "type": "error",
+  "message": "Offer not found"
+}
+```
+
+**Common Errors:**
+
+- `"Authentication required"` - Token missing or invalid
+- `"productId, offerAmount, and receiverId are required"` - Missing required
+  fields
+- `"Offer not found"` - Invalid offer ID
+- `"Only seller can accept a pending offer"` - Wrong user trying to accept
+- `"Only buyer can accept a counter offer"` - Wrong user trying to accept
+  counter
+- `"Cannot accept offer with status: rejected"` - Offer already rejected
 
 ---
 
