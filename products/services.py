@@ -50,30 +50,54 @@ class ProductService:
                         # Decode base64
                         image_bytes = base64.b64decode(encoded)
                         
-                        # Create upload directory
-                        upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'products')
-                        os.makedirs(upload_dir, exist_ok=True)
-                        
                         # Generate unique filename
                         unique_filename = f"{uuid.uuid4()}{ext}"
-                        file_path = os.path.join(upload_dir, unique_filename)
                         
-                        # Save file
-                        with open(file_path, 'wb') as f:
-                            f.write(image_bytes)
+                        # Try to upload to VPS if configured, otherwise use local storage
+                        vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+                        absolute_url = None
                         
-                        # Generate URL
-                        media_url = settings.MEDIA_URL.rstrip('/')
-                        file_url = f"{media_url}/uploads/products/{unique_filename}"
+                        if vps_enabled:
+                            # Upload to VPS
+                            from storage.vps_helper import upload_file_to_vps
+                            success, result = upload_file_to_vps(
+                                image_bytes,
+                                'uploads/products',
+                                unique_filename
+                            )
+                            
+                            if success:
+                                absolute_url = result
+                            else:
+                                # Fallback to local storage if VPS upload fails
+                                import logging
+                                logging.warning(f"VPS upload failed for product image, using local storage: {result}")
+                                vps_enabled = False
                         
-                        # Build absolute URL if request is available
-                        if request:
-                            absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
-                        else:
-                            # Fallback to default if no request
-                            absolute_url = f"https://dolabb-backend-2vsj.onrender.com{file_url}"
+                        if not vps_enabled:
+                            # Local storage fallback
+                            upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'products')
+                            os.makedirs(upload_dir, exist_ok=True)
+                            
+                            file_path = os.path.join(upload_dir, unique_filename)
+                            
+                            # Save file
+                            with open(file_path, 'wb') as f:
+                                f.write(image_bytes)
+                            
+                            # Generate URL
+                            media_url = settings.MEDIA_URL.rstrip('/')
+                            file_url = f"{media_url}/uploads/products/{unique_filename}"
+                            
+                            # Build absolute URL if request is available
+                            if request:
+                                absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
+                            else:
+                                # Fallback to default if no request
+                                absolute_url = f"https://dolabb-backend-2vsj.onrender.com{file_url}"
                         
-                        processed_images.append(absolute_url)
+                        if absolute_url:
+                            processed_images.append(absolute_url)
                     except Exception as e:
                         # If base64 processing fails, skip this image
                         import logging
@@ -187,38 +211,43 @@ class ProductService:
                 query = query.filter(category=filters['category'])
             if filters.get('subcategory'):
                 # Handle subcategory filtering - support exact match and case-insensitive
-                subcategory = filters['subcategory'].strip()
+                subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
                 if subcategory:
                     # Use case-insensitive matching for subcategory
                     query = query.filter(Q(subcategory__iexact=subcategory) | Q(subcategory=subcategory))
             if filters.get('brand'):
-                brand = filters['brand'].strip()
+                brand = filters['brand'].strip() if isinstance(filters['brand'], str) else str(filters.get('brand', ''))
                 if brand:
                     # Use case-insensitive matching for brand
                     query = query.filter(Q(brand__iexact=brand) | Q(brand=brand))
             if filters.get('minPrice'):
-                try:
-                    query = query.filter(price__gte=float(filters['minPrice']))
-                except (ValueError, TypeError):
-                    pass
+                min_price = filters['minPrice'].strip() if isinstance(filters['minPrice'], str) else str(filters['minPrice'])
+                if min_price:
+                    try:
+                        query = query.filter(price__gte=float(min_price))
+                    except (ValueError, TypeError):
+                        pass
             if filters.get('maxPrice'):
-                try:
-                    query = query.filter(price__lte=float(filters['maxPrice']))
-                except (ValueError, TypeError):
-                    pass
+                max_price = filters['maxPrice'].strip() if isinstance(filters['maxPrice'], str) else str(filters['maxPrice'])
+                if max_price:
+                    try:
+                        query = query.filter(price__lte=float(max_price))
+                    except (ValueError, TypeError):
+                        pass
             if filters.get('size'):
-                size = filters['size'].strip()
+                size = filters['size'].strip() if isinstance(filters['size'], str) else str(filters.get('size', ''))
                 if size:
                     # Support sizes from 2XS to One Size (case-insensitive)
                     query = query.filter(Q(size__iexact=size) | Q(size=size))
             if filters.get('color'):
-                color = filters['color'].strip()
+                color = filters['color'].strip() if isinstance(filters['color'], str) else str(filters.get('color', ''))
                 if color:
                     # Use case-insensitive matching for color
                     query = query.filter(Q(color__iexact=color) | Q(color=color))
             if filters.get('condition'):
                 # Map user-friendly condition names to database values
-                condition = filters['condition'].strip().lower()
+                condition_str = filters['condition'].strip() if isinstance(filters['condition'], str) else str(filters.get('condition', ''))
+                condition = condition_str.lower() if condition_str else ''
                 condition_mapping = {
                     'brand new': 'new',
                     'like new': 'like-new',
@@ -234,7 +263,7 @@ class ProductService:
                 if db_condition in ['new', 'like-new', 'good', 'fair']:
                     query = query.filter(condition=db_condition)
             if filters.get('search'):
-                search_term = filters['search'].strip()
+                search_term = filters['search'].strip() if isinstance(filters['search'], str) else str(filters.get('search', ''))
                 if search_term:
                     query = query.filter(title__icontains=search_term)
         

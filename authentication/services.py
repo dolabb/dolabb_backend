@@ -75,28 +75,63 @@ class AuthService:
                     # Decode base64
                     image_bytes = base64.b64decode(encoded)
                     
-                    # Create upload directory
+                    # Generate unique filename
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+                    
+                    # Try to upload to VPS if configured, otherwise use local storage
+                    vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+                    
+                    if vps_enabled:
+                        # Upload to VPS
+                        from storage.vps_helper import upload_file_to_vps
+                        success, result = upload_file_to_vps(
+                            image_bytes,
+                            'uploads/profiles',
+                            unique_filename
+                        )
+                        
+                        if success:
+                            import logging
+                            logging.info(f"Profile image uploaded to VPS: {result}")
+                            return result
+                        else:
+                            # Fallback to local storage if VPS upload fails
+                            import logging
+                            logging.warning(f"VPS upload failed, using local storage: {result}")
+                    
+                    # Local storage fallback
                     upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'profiles')
                     os.makedirs(upload_dir, exist_ok=True)
                     
-                    # Generate unique filename
-                    unique_filename = f"{uuid.uuid4()}{ext}"
                     file_path = os.path.join(upload_dir, unique_filename)
                     
                     # Save file
                     with open(file_path, 'wb') as f:
                         f.write(image_bytes)
                     
-                    # Generate URL
+                    # Verify file was saved successfully
+                    if not os.path.exists(file_path):
+                        import logging
+                        logging.error(f"File was not saved successfully: {file_path}")
+                        return None
+                    
+                    # Generate URL - ensure consistent format
                     media_url = settings.MEDIA_URL.rstrip('/')
+                    if not media_url.startswith('/'):
+                        media_url = '/' + media_url
                     file_url = f"{media_url}/uploads/profiles/{unique_filename}"
                     
                     # Build absolute URL if request is available
                     if request:
-                        absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
+                        # Use request to build absolute URL
+                        absolute_url = request.build_absolute_uri(file_url)
                     else:
                         # Fallback to default if no request
                         absolute_url = f"https://dolabb-backend-2vsj.onrender.com{file_url}"
+                    
+                    # Log for debugging
+                    import logging
+                    logging.info(f"Profile image saved locally: {file_path}, URL: {absolute_url}")
                     
                     return absolute_url
                 except Exception as e:

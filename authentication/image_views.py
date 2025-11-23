@@ -74,27 +74,63 @@ def upload_image(request):
                 'error': 'File is not a valid image. Please upload a valid JPEG, PNG, GIF, or WEBP image.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create upload directory if it doesn't exist
-        upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'profiles')
-        os.makedirs(upload_dir, exist_ok=True)
-        
         # Generate unique filename
         import uuid
         file_extension = os.path.splitext(image_file.name)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(upload_dir, unique_filename)
         
-        # Save file
-        with open(file_path, 'wb+') as destination:
-            for chunk in image_file.chunks():
-                destination.write(chunk)
+        # Read file content
+        image_bytes = b''
+        for chunk in image_file.chunks():
+            image_bytes += chunk
         
-        # Generate absolute URL - ensure consistent format
-        # Remove leading slash from MEDIA_URL if present, then add it back
-        media_url = settings.MEDIA_URL.rstrip('/')
-        file_url = f"{media_url}/uploads/profiles/{unique_filename}"
-        # Build absolute URL using request's scheme and host
-        absolute_url = f"{request.scheme}://{request.get_host()}{file_url}"
+        # Try to upload to VPS if configured, otherwise use local storage
+        vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+        absolute_url = None
+        
+        if vps_enabled:
+            # Upload to VPS
+            from storage.vps_helper import upload_file_to_vps
+            success, result = upload_file_to_vps(
+                image_bytes,
+                'uploads/profiles',
+                unique_filename
+            )
+            
+            if success:
+                absolute_url = result
+                file_path = f"VPS:uploads/profiles/{unique_filename}"  # For metadata
+            else:
+                # Fallback to local storage if VPS upload fails
+                import logging
+                logging.warning(f"VPS upload failed, using local storage: {result}")
+                vps_enabled = False
+        
+        if not vps_enabled:
+            # Local storage fallback
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'profiles')
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(upload_dir, unique_filename)
+            
+            # Save file
+            with open(file_path, 'wb+') as destination:
+                destination.write(image_bytes)
+            
+            # Verify file was saved successfully
+            if not os.path.exists(file_path):
+                return Response({
+                    'success': False,
+                    'error': 'Failed to save image file'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Generate absolute URL - ensure consistent format
+            media_url = settings.MEDIA_URL.rstrip('/')
+            if not media_url.startswith('/'):
+                media_url = '/' + media_url
+            file_url = f"{media_url}/uploads/profiles/{unique_filename}"
+            # Build absolute URL using request's build_absolute_uri for consistency
+            absolute_url = request.build_absolute_uri(file_url)
         
         # Get user ID if authenticated
         uploaded_by = None
@@ -131,6 +167,7 @@ def upload_image(request):
 
 def serve_media_file(request, file_path):
     """Serve media files in production"""
+    import logging
     try:
         # Normalize the file path to prevent directory traversal attacks
         file_path = os.path.normpath(file_path).lstrip('/\\')
@@ -142,6 +179,7 @@ def serve_media_file(request, file_path):
         
         # Security check: ensure the file is within MEDIA_ROOT (prevent directory traversal)
         if not os.path.abspath(full_path).startswith(media_root):
+            logging.warning(f"Security check failed: {full_path} not in {media_root}")
             raise Http404("File not found")
         
         # Check if file exists and is a file (not a directory)
@@ -159,10 +197,13 @@ def serve_media_file(request, file_path):
                             full_path = os.path.join(directory, f)
                             break
                     else:
+                        logging.warning(f"File not found: {full_path} (directory exists: {directory})")
                         raise Http404("File not found")
-                except OSError:
+                except OSError as e:
+                    logging.error(f"Error listing directory {directory}: {str(e)}")
                     raise Http404("File not found")
             else:
+                logging.warning(f"Directory does not exist: {directory}")
                 raise Http404("File not found")
         
         # Determine content type
@@ -177,6 +218,7 @@ def serve_media_file(request, file_path):
         response['Content-Disposition'] = f'inline; filename="{os.path.basename(full_path)}"'
         return response
         
-    except (FileNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, OSError, ValueError) as e:
+        logging.error(f"Error serving media file {file_path}: {str(e)}")
         raise Http404("File not found")
 
