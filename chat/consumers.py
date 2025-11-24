@@ -16,6 +16,9 @@ from notifications.models import UserNotification
 
 logger = logging.getLogger(__name__)
 
+# Track online users per conversation: {conversation_id: {user_id: count}}
+online_users = {}
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for chat"""
@@ -32,7 +35,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Authentication is REQUIRED - reject connections without tokens
             if not token:
-                logger.warning("WebSocket connection rejected - no token provided")
+                logger.warning(f"WebSocket connection rejected - no token provided for conversation_id: {conversation_id}")
                 await self.accept()  # Accept first, then close
                 await self.close(code=4001)  # Unauthorized
                 return
@@ -40,14 +43,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             try:
                 user = await self.authenticate_user(token)
                 if not user:
-                    logger.warning("WebSocket authentication failed - invalid token")
+                    logger.warning(f"WebSocket authentication failed - invalid token for conversation_id: {conversation_id}")
                     await self.accept()  # Accept first, then close
                     await self.close(code=4001)  # Unauthorized
                     return
                 self.user = user
-                logger.info(f"WebSocket authenticated - user_id: {str(user.id)}")
+                logger.info(f"WebSocket authenticated - user_id: {str(user.id)}, conversation_id: {conversation_id}")
             except Exception as e:
-                logger.error(f"WebSocket authentication error: {str(e)}", exc_info=True)
+                logger.error(f"WebSocket authentication error for conversation_id {conversation_id}: {str(e)}", exc_info=True)
                 await self.accept()
                 await self.close(code=4001)
                 return
@@ -75,7 +78,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.warning("Continuing without channel layer group (Redis may be unavailable)")
             
             await self.accept()
-            logger.info(f"WebSocket connected successfully - conversation_id: {self.conversation_id}")
+            
+            # Track user as online
+            await self.mark_user_online()
+            
+            # Send current online users to the newly connected user
+            await self.send_current_online_users()
+            
+            logger.info(f"WebSocket connected successfully - conversation_id: {self.conversation_id}, user_id: {str(self.user.id)}")
         except Exception as e:
             logger.error(f"WebSocket connection error: {str(e)}", exc_info=True)
             # Try to accept and close gracefully
@@ -115,11 +125,111 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
     
     async def disconnect(self, close_code):
+        # Mark user as offline before disconnecting
+        if hasattr(self, 'user') and self.user and hasattr(self, 'conversation_id'):
+            await self.mark_user_offline()
+        
         # Leave room group
-        await self.channel_layer.group_discard(
+        try:
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+        except Exception as e:
+            logger.error(f"Error leaving room group: {str(e)}")
+    
+    async def mark_user_online(self):
+        """Mark user as online and broadcast status"""
+        if not hasattr(self, 'conversation_id') or not self.user:
+            return
+        
+        user_id = str(self.user.id)
+        conversation_id = self.conversation_id
+        
+        # Track online users
+        if conversation_id not in online_users:
+            online_users[conversation_id] = {}
+        
+        # Increment connection count for this user
+        if user_id not in online_users[conversation_id]:
+            online_users[conversation_id][user_id] = 0
+        online_users[conversation_id][user_id] += 1
+        
+        # Get conversation participants to determine who to notify
+        participants = await self.get_conversation_participants(conversation_id)
+        
+        # Broadcast user online status
+        await self.channel_layer.group_send(
             self.room_group_name,
-            self.channel_name
+            {
+                'type': 'user_status',
+                'user_id': user_id,
+                'status': 'online',
+                'participants': participants
+            }
         )
+    
+    async def mark_user_offline(self):
+        """Mark user as offline and broadcast status"""
+        if not hasattr(self, 'conversation_id') or not self.user:
+            return
+        
+        user_id = str(self.user.id)
+        conversation_id = self.conversation_id
+        
+        # Decrement connection count
+        if conversation_id in online_users and user_id in online_users[conversation_id]:
+            online_users[conversation_id][user_id] -= 1
+            
+            # If count reaches 0, user is offline
+            if online_users[conversation_id][user_id] <= 0:
+                del online_users[conversation_id][user_id]
+                
+                # Get conversation participants
+                participants = await self.get_conversation_participants(conversation_id)
+                
+                # Broadcast user offline status
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'user_status',
+                        'user_id': user_id,
+                        'status': 'offline',
+                        'participants': participants
+                    }
+                )
+    
+    async def send_current_online_users(self):
+        """Send current online users list to the connected user"""
+        if not hasattr(self, 'conversation_id'):
+            return
+        
+        conversation_id = self.conversation_id
+        online_user_ids = []
+        
+        if conversation_id in online_users:
+            online_user_ids = list(online_users[conversation_id].keys())
+        
+        # Get conversation participants
+        participants = await self.get_conversation_participants(conversation_id)
+        
+        await self.send(text_data=json.dumps({
+            'type': 'online_users',
+            'onlineUsers': online_user_ids,
+            'participants': participants
+        }))
+    
+    @database_sync_to_async
+    def get_conversation_participants(self, conversation_id):
+        """Get conversation participant IDs"""
+        try:
+            conversation = Conversation.objects(id=conversation_id).first()
+            if conversation and conversation.participants:
+                return [str(p.id) for p in conversation.participants]
+            return []
+        except Exception as e:
+            logger.error(f"Error getting conversation participants: {str(e)}")
+            return []
     
     async def receive(self, text_data):
         """Receive message from WebSocket"""
@@ -182,20 +292,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Save message to database
         message = await self.save_message(sender_id, receiver_id, text, product_id, attachments, offer_id)
         
+        # Get message details with sender/receiver info
+        message_data = await self.get_message_data(message, sender_id)
+        
         # Send message to room group
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'chat_message',
-                'message': {
-                    'id': str(message.id),
-                    'text': message.text,
-                    'sender': 'me',
-                    'timestamp': message.created_at.isoformat(),
-                    'attachments': message.attachments,
-                    'offerId': str(message.offer_id.id) if message.offer_id else None,
-                    'productId': str(message.product_id.id) if message.product_id else None
-                }
+                'message': message_data
             }
         )
     
@@ -461,12 +566,68 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'message': str(e)
             }))
     
+    @database_sync_to_async
+    def get_message_data(self, message, current_user_id):
+        """Get message data with sender/receiver information"""
+        sender_id = str(message.sender_id.id) if message.sender_id else None
+        receiver_id = str(message.receiver_id.id) if message.receiver_id else None
+        is_sender = sender_id == str(current_user_id)
+        
+        # Get sender user info
+        sender = None
+        if message.sender_id:
+            sender = User.objects(id=message.sender_id.id).first()
+        
+        message_data = {
+            'id': str(message.id),
+            'text': message.text or '',
+            'senderId': sender_id,
+            'receiverId': receiver_id,
+            'isSender': is_sender,  # True if current user sent this message
+            'sender': 'me' if is_sender else 'other',  # For backward compatibility
+            'senderName': sender.full_name if sender else None,
+            'timestamp': message.created_at.isoformat(),
+            'attachments': message.attachments or [],
+            'offerId': str(message.offer_id.id) if message.offer_id else None,
+            'productId': str(message.product_id.id) if message.product_id else None,
+            'messageType': message.message_type or 'text'
+        }
+        
+        return message_data
+    
     async def chat_message(self, event):
         """Send message to WebSocket"""
         message = event['message']
+        
+        # Determine if current user is sender (for frontend display)
+        if hasattr(self, 'user') and self.user:
+            current_user_id = str(self.user.id)
+            message['isSender'] = message.get('senderId') == current_user_id
+            message['sender'] = 'me' if message['isSender'] else 'other'
+        
         await self.send(text_data=json.dumps({
             'type': 'chat_message',
             'message': message
+        }))
+    
+    async def user_status(self, event):
+        """Send user online/offline status to WebSocket"""
+        user_id = event['user_id']
+        status = event['status']
+        participants = event.get('participants', [])
+        
+        # Get current online users for this conversation
+        conversation_id = self.conversation_id
+        online_user_ids = []
+        if conversation_id in online_users:
+            online_user_ids = list(online_users[conversation_id].keys())
+        
+        await self.send(text_data=json.dumps({
+            'type': 'user_status',
+            'user_id': user_id,
+            'status': status,  # 'online' or 'offline'
+            'onlineUsers': online_user_ids,  # List of currently online user IDs
+            'participants': participants
         }))
     
     async def offer_sent(self, event):
