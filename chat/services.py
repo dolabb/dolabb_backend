@@ -87,27 +87,60 @@ class ChatService:
             sender = User.objects(id=msg.sender_id.id).first()
             is_sender = str(msg.sender_id.id) == str(user_id)
             
+            sender_id = str(msg.sender_id.id) if msg.sender_id else None
+            receiver_id = str(msg.receiver_id.id) if msg.receiver_id else None
+            
             message_data = {
                 'id': str(msg.id),
                 'text': msg.text or '',
-                'sender': 'me' if is_sender else 'other',
+                'senderId': sender_id,
+                'receiverId': receiver_id,
+                'isSender': is_sender,  # True if current user sent this message
+                'sender': 'me' if is_sender else 'other',  # For backward compatibility
+                'senderName': sender.full_name if sender else None,
                 'timestamp': msg.created_at.isoformat(),
-                'attachments': msg.attachments or []
+                'attachments': msg.attachments or [],
+                'offerId': str(msg.offer_id.id) if msg.offer_id else None,
+                'productId': str(msg.product_id.id) if msg.product_id else None,
+                'messageType': msg.message_type or 'text'
             }
             
+            # If message has an offer, include full offer details with product information
             if msg.offer_id:
                 offer = Offer.objects(id=msg.offer_id.id).first()
-                product = Product.objects(id=offer.product_id.id).first() if offer else None
-                message_data['offer'] = {
-                    'id': str(offer.id),
-                    'type': 'your-offer' if is_sender else 'offer-received',
-                    'product': product.title if product else '',
-                    'size': product.size if product else '',
-                    'price': offer.original_price,
-                    'offer': offer.offer_amount,
-                    'shipping': offer.shipping_cost,
-                    'expires': offer.expiration_date.isoformat() if offer.expiration_date else None
-                }
+                if offer:
+                    offer_data = {
+                        'id': str(offer.id),
+                        'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
+                        'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
+                        'status': offer.status,
+                        'shippingCost': float(offer.shipping_cost) if offer.shipping_cost else 0.0,
+                        'expirationDate': offer.expiration_date.isoformat() if offer.expiration_date else None,
+                    }
+                    
+                    # Include counter offer if it exists
+                    if offer.counter_offer_amount:
+                        offer_data['counterAmount'] = float(offer.counter_offer_amount)
+                    
+                    # Get product details
+                    if offer.product_id:
+                        product = Product.objects(id=offer.product_id.id).first()
+                        if product:
+                            offer_data['product'] = {
+                                'id': str(product.id),
+                                'title': product.title or '',
+                                'image': product.images[0] if product.images and len(product.images) > 0 else None,
+                                'images': product.images or [],
+                                'price': float(product.price) if product.price else 0.0,
+                                'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
+                                'currency': product.currency or 'SAR',
+                                'size': product.size or '',
+                                'condition': product.condition or '',
+                                'brand': product.brand or '',
+                                'category': product.category or '',
+                            }
+                    
+                    message_data['offer'] = offer_data
             
             messages_list.append(message_data)
         
