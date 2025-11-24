@@ -332,6 +332,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 shipping_address, zip_code, house_number
             )
             
+            # Get offer details with product information
+            offer_data = await self.get_offer_details_async(offer)
+            
             # Save message with offer
             message = await self.save_message(
                 buyer_id, receiver_id, text or f"Made an offer of ${offer_amount}",
@@ -343,16 +346,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.room_group_name,
                 {
                     'type': 'offer_sent',
-                    'offer': {
-                        'id': str(offer.id),
-                        'productId': str(offer.product_id.id),
-                        'buyerId': str(offer.buyer_id.id),
-                        'sellerId': str(offer.seller_id.id),
-                        'offerAmount': offer.offer_amount,
-                        'originalPrice': offer.original_price,
-                        'status': offer.status,
-                        'createdAt': offer.created_at.isoformat()
-                    },
+                    'offer': offer_data,
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
@@ -396,17 +390,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 [], str(offer.id)
             )
             
+            # Get offer details with product information and counter offer
+            offer_data = await self.get_offer_details_async(offer, include_counter=True)
+            
             # Broadcast counter offer to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'offer_countered',
-                    'offer': {
-                        'id': str(offer.id),
-                        'counterAmount': offer.counter_offer_amount,
-                        'status': offer.status,
-                        'updatedAt': offer.updated_at.isoformat()
-                    },
+                    'offer': offer_data,
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
@@ -593,6 +585,38 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'messageType': message.message_type or 'text'
         }
         
+        # If message has an offer, include offer details with product information
+        if message.offer_id:
+            from products.models import Offer
+            offer = Offer.objects(id=message.offer_id.id).first()
+            if offer:
+                offer_data = {
+                    'id': str(offer.id),
+                    'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
+                    'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
+                    'status': offer.status,
+                    'counterAmount': float(offer.counter_offer_amount) if offer.counter_offer_amount else None,
+                }
+                
+                # Get product details
+                if offer.product_id:
+                    from products.models import Product
+                    product = Product.objects(id=offer.product_id.id).first()
+                    if product:
+                        offer_data['product'] = {
+                            'id': str(product.id),
+                            'title': product.title or '',
+                            'image': product.images[0] if product.images and len(product.images) > 0 else None,
+                            'images': product.images or [],
+                            'price': float(product.price) if product.price else 0.0,
+                            'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
+                            'currency': product.currency or 'SAR',
+                            'size': product.size or '',
+                            'condition': product.condition or '',
+                        }
+                
+                message_data['offer'] = offer_data
+        
         return message_data
     
     async def chat_message(self, event):
@@ -696,6 +720,45 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Get offer asynchronously"""
         from products.models import Offer
         return Offer.objects(id=offer_id).first()
+    
+    @database_sync_to_async
+    def get_offer_details_async(self, offer, include_counter=False):
+        """Get offer details with product information"""
+        from products.models import Product
+        
+        offer_data = {
+            'id': str(offer.id),
+            'productId': str(offer.product_id.id) if offer.product_id else None,
+            'buyerId': str(offer.buyer_id.id) if offer.buyer_id else None,
+            'sellerId': str(offer.seller_id.id) if offer.seller_id else None,
+            'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
+            'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
+            'status': offer.status,
+            'createdAt': offer.created_at.isoformat() if offer.created_at else None,
+            'updatedAt': offer.updated_at.isoformat() if offer.updated_at else None,
+        }
+        
+        # Include counter offer if requested and exists
+        if include_counter and offer.counter_offer_amount:
+            offer_data['counterAmount'] = float(offer.counter_offer_amount)
+        
+        # Get product details
+        if offer.product_id:
+            product = Product.objects(id=offer.product_id.id).first()
+            if product:
+                offer_data['product'] = {
+                    'id': str(product.id),
+                    'title': product.title or '',
+                    'image': product.images[0] if product.images and len(product.images) > 0 else None,
+                    'images': product.images or [],
+                    'price': float(product.price) if product.price else 0.0,
+                    'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
+                    'currency': product.currency or 'SAR',
+                    'size': product.size or '',
+                    'condition': product.condition or '',
+                }
+        
+        return offer_data
     
     @database_sync_to_async
     def accept_counter_offer_async(self, offer_id, buyer_id):
