@@ -350,8 +350,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
-                        'timestamp': message.created_at.isoformat()
-                    }
+                        'timestamp': message.created_at.isoformat(),
+                        'conversationId': message.conversation_id
+                    },
+                    'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
@@ -402,8 +404,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
-                        'timestamp': message.created_at.isoformat()
-                    }
+                        'timestamp': message.created_at.isoformat(),
+                        'conversationId': message.conversation_id
+                    },
+                    'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
@@ -496,8 +500,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
-                        'timestamp': message.created_at.isoformat()
-                    }
+                        'timestamp': message.created_at.isoformat(),
+                        'conversationId': message.conversation_id
+                    },
+                    'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
@@ -548,8 +554,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message': {
                         'id': str(message.id),
                         'text': message.text,
-                        'timestamp': message.created_at.isoformat()
-                    }
+                        'timestamp': message.created_at.isoformat(),
+                        'conversationId': message.conversation_id
+                    },
+                    'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
@@ -575,6 +583,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'text': message.text or '',
             'senderId': sender_id,
             'receiverId': receiver_id,
+            'conversationId': message.conversation_id,  # Add conversation_id for frontend query refetch
             'isSender': is_sender,  # True if current user sent this message
             'sender': 'me' if is_sender else 'other',  # For backward compatibility
             'senderName': sender.full_name if sender else None,
@@ -629,9 +638,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message['isSender'] = message.get('senderId') == current_user_id
             message['sender'] = 'me' if message['isSender'] else 'other'
         
+        # Ensure conversation_id is included in the response
+        if 'conversationId' not in message and hasattr(self, 'conversation_id'):
+            message['conversationId'] = self.conversation_id
+        
         await self.send(text_data=json.dumps({
             'type': 'chat_message',
-            'message': message
+            'message': message,
+            'conversationId': message.get('conversationId')  # Include at top level for easy access
         }))
     
     async def user_status(self, event):
@@ -659,7 +673,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'offer_sent',
             'offer': event['offer'],
-            'message': event['message']
+            'message': event['message'],
+            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
         }))
     
     async def offer_countered(self, event):
@@ -667,7 +682,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'offer_countered',
             'offer': event['offer'],
-            'message': event['message']
+            'message': event['message'],
+            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
         }))
     
     async def offer_accepted(self, event):
@@ -675,7 +691,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'offer_accepted',
             'offer': event['offer'],
-            'message': event['message']
+            'message': event['message'],
+            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
         }))
     
     async def offer_rejected(self, event):
@@ -683,7 +700,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'offer_rejected',
             'offer': event['offer'],
-            'message': event['message']
+            'message': event['message'],
+            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
         }))
     
     @database_sync_to_async
