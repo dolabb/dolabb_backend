@@ -162,16 +162,36 @@ class ProductService:
             # Update affiliate code usage count when product is created
             try:
                 from authentication.models import Affiliate
-                affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
+                # Find affiliate by code (exact match, no status filter - count should update regardless of status)
+                # Use __iexact for case-insensitive matching in MongoDB
+                affiliate = Affiliate.objects(affiliate_code__iexact=affiliate_code.strip()).first()
+                
                 if affiliate:
-                    current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
-                    affiliate.code_usage_count = str(current_count + 1)
+                    # Reload affiliate to get latest data (important for concurrent updates)
+                    affiliate.reload()
+                    
+                    # Get current count, handling None or empty string
+                    try:
+                        current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count and str(affiliate.code_usage_count).strip() else 0
+                    except (ValueError, TypeError):
+                        current_count = 0
+                    
+                    # Increment count
+                    new_count = current_count + 1
+                    affiliate.code_usage_count = str(new_count)
                     affiliate.last_activity = datetime.utcnow()
                     affiliate.save()
+                    
+                    # Log for debugging
+                    import logging
+                    logging.info(f"Updated affiliate code usage count for {affiliate_code}: {current_count} -> {new_count} (Affiliate ID: {affiliate.id})")
+                else:
+                    import logging
+                    logging.warning(f"Affiliate code not found: {affiliate_code}")
             except Exception as e:
                 # Log error but don't fail product creation
                 import logging
-                logging.error(f"Failed to update affiliate code usage count: {str(e)}")
+                logging.error(f"Failed to update affiliate code usage count for {affiliate_code}: {str(e)}", exc_info=True)
         else:
             product.affiliate_code = None
         
