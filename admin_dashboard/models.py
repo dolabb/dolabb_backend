@@ -30,16 +30,18 @@ class FeeSettings(Document):
 
 
 class CashoutRequest(Document):
-    """Cashout request model"""
+    """Cashout request model (Seller Payout Request)"""
     seller_id = ReferenceField(User, required=True)
     seller_name = StringField()
     amount = FloatField(required=True)
+    payment_method = StringField(choices=['Bank Transfer', 'PayPal', 'Stripe'], default='Bank Transfer')
     requested_date = DateTimeField(default=datetime.utcnow)
     status = StringField(choices=['pending', 'approved', 'rejected'], default='pending')
     account_details = StringField()
     rejection_reason = StringField()
     reviewed_at = DateTimeField()
     reviewed_by = StringField()
+    notes = StringField()  # Admin notes
     
     meta = {
         'collection': 'cashout_requests',

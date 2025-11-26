@@ -382,10 +382,12 @@ class CashoutService:
                 'SellerId': str(req.seller_id.id),
                 'SellerName': req.seller_name,
                 'amount': req.amount,
+                'paymentMethod': req.payment_method if hasattr(req, 'payment_method') else 'Bank Transfer',
                 'Requested Date': req.requested_date.isoformat(),
                 'Status': req.status,
                 'accountDetails': req.account_details,
-                'rejectionReason': req.rejection_reason
+                'rejectionReason': req.rejection_reason,
+                'notes': req.notes if hasattr(req, 'notes') else None
             })
         
         return requests_list, total
@@ -511,6 +513,49 @@ class DisputeService:
         year = datetime.utcnow().year
         number = random.randint(1, 9999)
         return f"DISP-{year}-{number:04d}"
+    
+    @staticmethod
+    def create_dispute(buyer_id, order_id, dispute_type, description):
+        """Create a dispute/report from buyer"""
+        from products.models import Order, Product
+        from authentication.models import User
+        
+        # Verify order exists and belongs to buyer
+        order = Order.objects(id=order_id, buyer_id=buyer_id).first()
+        if not order:
+            raise ValueError("Order not found or does not belong to buyer")
+        
+        # Get buyer and seller info
+        buyer = User.objects(id=buyer_id).first()
+        seller = User.objects(id=order.seller_id.id).first()
+        product = Product.objects(id=order.product_id.id).first()
+        
+        if not buyer:
+            raise ValueError("Buyer not found")
+        
+        # Generate case number
+        case_number = DisputeService.generate_case_number()
+        
+        # Ensure case number is unique
+        while Dispute.objects(case_number=case_number).first():
+            case_number = DisputeService.generate_case_number()
+        
+        # Create dispute
+        dispute = Dispute(
+            case_number=case_number,
+            dispute_type=dispute_type,
+            buyer_id=buyer,
+            buyer_name=buyer.full_name or buyer.username,
+            seller_id=seller,
+            seller_name=order.seller_name or (seller.username if seller else ''),
+            item_id=product,
+            item_title=order.product_title or (product.title if product else ''),
+            description=description,
+            status='open'
+        )
+        dispute.save()
+        
+        return dispute
     
     @staticmethod
     def get_disputes(page=1, limit=20, status_filter=None):

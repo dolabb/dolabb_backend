@@ -2,7 +2,7 @@
 Product services
 """
 from datetime import datetime, timedelta
-from products.models import Product, SavedProduct, Offer, Order, ShippingInfo
+from products.models import Product, SavedProduct, Offer, Order, ShippingInfo, Review
 from authentication.models import User
 import random
 import string
@@ -1204,3 +1204,124 @@ class OrderService:
         
         return order
 
+
+class ReviewService:
+    """Review service"""
+    
+    @staticmethod
+    def create_review(order_id, buyer_id, rating, comment):
+        """Create a review for an order"""
+        from products.models import Review, Order, Product, User
+        
+        # Verify order exists and belongs to buyer
+        order = Order.objects(id=order_id, buyer_id=buyer_id).first()
+        if not order:
+            raise ValueError("Order not found or does not belong to buyer")
+        
+        # Check if order is delivered
+        if order.status != 'delivered':
+            raise ValueError("Can only review delivered orders")
+        
+        # Check if review already exists
+        existing_review = Review.objects(order_id=order_id, buyer_id=buyer_id).first()
+        if existing_review:
+            raise ValueError("Review already submitted for this order")
+        
+        # Get product and seller info
+        product = Product.objects(id=order.product_id.id).first()
+        seller = User.objects(id=order.seller_id.id).first()
+        buyer = User.objects(id=buyer_id).first()
+        
+        # Create review
+        review = Review(
+            order_id=order,
+            buyer_id=buyer,
+            buyer_name=buyer.full_name or buyer.username if buyer else '',
+            seller_id=seller,
+            seller_name=order.seller_name or (seller.username if seller else ''),
+            product_id=product,
+            product_title=order.product_title or (product.title if product else ''),
+            rating=rating,
+            comment=comment
+        )
+        review.save()
+        
+        # Mark order as reviewed
+        order.review_submitted = True
+        order.save()
+        
+        return review
+    
+    @staticmethod
+    def get_reviews_for_product(product_id, page=1, limit=20):
+        """Get reviews for a product"""
+        from products.models import Review
+        
+        query = Review.objects(product_id=product_id)
+        total = query.count()
+        skip = (page - 1) * limit
+        reviews = query.skip(skip).limit(limit).order_by('-created_at')
+        
+        return reviews, total
+    
+    @staticmethod
+    def get_reviews_for_seller(seller_id, page=1, limit=20):
+        """Get reviews for a seller"""
+        from products.models import Review
+        
+        query = Review.objects(seller_id=seller_id)
+        total = query.count()
+        skip = (page - 1) * limit
+        reviews = query.skip(skip).limit(limit).order_by('-created_at')
+        
+        return reviews, total
+    
+    @staticmethod
+    def get_buyer_reviews(buyer_id, page=1, limit=20):
+        """Get reviews submitted by a buyer"""
+        from products.models import Review
+        
+        query = Review.objects(buyer_id=buyer_id)
+        total = query.count()
+        skip = (page - 1) * limit
+        reviews = query.skip(skip).limit(limit).order_by('-created_at')
+        
+        return reviews, total
+    
+    @staticmethod
+    def get_seller_rating_stats(seller_id):
+        """Get rating statistics for a seller"""
+        from products.models import Review
+        
+        reviews = Review.objects(seller_id=seller_id)
+        total_reviews = reviews.count()
+        
+        if total_reviews == 0:
+            return {
+                'average_rating': 0,
+                'total_reviews': 0,
+                'rating_distribution': {
+                    '5': 0,
+                    '4': 0,
+                    '3': 0,
+                    '2': 0,
+                    '1': 0
+                }
+            }
+        
+        total_rating = sum(review.rating for review in reviews)
+        average_rating = round(total_rating / total_reviews, 2)
+        
+        rating_distribution = {
+            '5': reviews.filter(rating=5).count(),
+            '4': reviews.filter(rating=4).count(),
+            '3': reviews.filter(rating=3).count(),
+            '2': reviews.filter(rating=2).count(),
+            '1': reviews.filter(rating=1).count()
+        }
+        
+        return {
+            'average_rating': average_rating,
+            'total_reviews': total_reviews,
+            'rating_distribution': rating_distribution
+        }

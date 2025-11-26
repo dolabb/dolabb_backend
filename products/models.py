@@ -119,11 +119,33 @@ class Order(Document):
     shipment_proof = StringField()  # URL to shipment proof image
     payment_status = StringField(choices=['pending', 'completed', 'failed'], default='pending')
     payment_id = StringField()
+    review_submitted = BooleanField(default=False)  # Track if buyer has submitted a review
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     
     meta = {
         'collection': 'orders',
         'indexes': ['buyer_id', 'seller_id', 'status', 'created_at', 'order_number']
+    }
+
+
+class Review(Document):
+    """Review model for product/seller reviews"""
+    order_id = ReferenceField(Order, required=True)
+    buyer_id = ReferenceField(User, required=True)
+    buyer_name = StringField()
+    seller_id = ReferenceField(User, required=True)
+    seller_name = StringField()
+    product_id = ReferenceField(Product, required=True)
+    product_title = StringField()
+    rating = IntField(required=True, min_value=1, max_value=5)  # 1-5 star rating
+    comment = StringField(max_length=1000)  # Review comment
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+    
+    meta = {
+        'collection': 'reviews',
+        'indexes': ['order_id', 'buyer_id', 'seller_id', 'product_id', 'created_at'],
+        'unique_together': [('order_id', 'buyer_id')]  # One review per order per buyer
     }
 

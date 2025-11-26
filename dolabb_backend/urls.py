@@ -23,6 +23,7 @@ def api_root(request):
             'offers': '/api/offers/',
             'payment': '/api/payment/',
             'user': '/api/user/',
+            'seller': '/api/seller/',
             'affiliate': '/api/affiliate/',
             'notifications': '/api/notifications/',
             'admin_panel': '/admin/',
@@ -41,6 +42,7 @@ urlpatterns = [
     path('api/offers/', include('products.offer_urls')),
     path('api/payment/', include('payments.urls')),
     path('api/user/', include('products.user_urls')),
+    path('api/seller/', include('products.seller_urls')),
     path('api/affiliate/', include('affiliates.urls')),
     path('api/notifications/', include('notifications.urls')),
 ]

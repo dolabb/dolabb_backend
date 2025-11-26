@@ -1,11 +1,12 @@
 """
 User-specific product views
 """
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from products.services import ProductService, OfferService, OrderService
-from products.models import Product, Order, Offer
+from products.services import ProductService, OfferService, OrderService, ReviewService
+from products.models import Product, Order, Offer, Review
 from authentication.models import User
 
 
@@ -99,7 +100,8 @@ def get_user_orders(request):
                     'country': order.country,
                     'additionalInfo': order.additional_info
                 },
-                'trackingNumber': order.tracking_number or ''
+                'trackingNumber': order.tracking_number or '',
+                'reviewSubmitted': order.review_submitted if hasattr(order, 'review_submitted') else False
             }
             
             # Add seller payout information for sellers
@@ -174,6 +176,140 @@ def ship_order(request, order_id):
         }, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_review(request):
+    """Create a review for a delivered order (buyer action)"""
+    try:
+        buyer_id = str(request.user.id)
+        order_id = request.data.get('orderId')
+        rating = request.data.get('rating')
+        comment = request.data.get('comment', '')
+        
+        if not order_id:
+            return Response({'success': False, 'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not rating:
+            return Response({'success': False, 'error': 'Rating is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not isinstance(rating, int) or rating < 1 or rating > 5:
+            return Response({'success': False, 'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        review = ReviewService.create_review(order_id, buyer_id, rating, comment)
+        
+        return Response({
+            'success': True,
+            'message': 'Review submitted successfully',
+            'review': {
+                'id': str(review.id),
+                'orderId': str(review.order_id.id),
+                'rating': review.rating,
+                'comment': review.comment,
+                'createdAt': review.created_at.isoformat()
+            }
+        }, status=status.HTTP_201_CREATED)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_product_reviews(request, product_id):
+    """Get reviews for a product"""
+    try:
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        
+        reviews, total = ReviewService.get_reviews_for_product(product_id, page, limit)
+        
+        reviews_list = []
+        for review in reviews:
+            buyer = User.objects(id=review.buyer_id.id).first()
+            reviews_list.append({
+                'id': str(review.id),
+                'buyer': {
+                    'id': str(buyer.id) if buyer else '',
+                    'username': buyer.username if buyer else '',
+                    'profileImage': buyer.profile_image if buyer else ''
+                },
+                'rating': review.rating,
+                'comment': review.comment,
+                'createdAt': review.created_at.isoformat()
+            })
+        
+        return Response({
+            'success': True,
+            'reviews': reviews_list,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit,
+                'totalItems': total
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_seller_rating(request, seller_id):
+    """Get seller rating statistics"""
+    try:
+        stats = ReviewService.get_seller_rating_stats(seller_id)
+        
+        return Response({
+            'success': True,
+            'rating': stats
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_dispute(request):
+    """Create a dispute/report about a seller (buyer action)"""
+    try:
+        from admin_dashboard.services import DisputeService
+        
+        buyer_id = str(request.user.id)
+        order_id = request.data.get('orderId')
+        dispute_type = request.data.get('disputeType')
+        description = request.data.get('description', '')
+        
+        if not order_id:
+            return Response({'success': False, 'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not dispute_type:
+            return Response({'success': False, 'error': 'Dispute type is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if dispute_type not in ['product_quality', 'delivery_issue', 'payment_dispute']:
+            return Response({'success': False, 'error': 'Invalid dispute type'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not description:
+            return Response({'success': False, 'error': 'Description is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        dispute = DisputeService.create_dispute(buyer_id, order_id, dispute_type, description)
+        
+        return Response({
+            'success': True,
+            'message': 'Dispute/report submitted successfully. Admin will review it.',
+            'dispute': {
+                'id': str(dispute.id),
+                'caseNumber': dispute.case_number,
+                'type': dispute.dispute_type,
+                'status': dispute.status,
+                'createdAt': dispute.created_at.isoformat()
+            }
+        }, status=status.HTTP_201_CREATED)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
