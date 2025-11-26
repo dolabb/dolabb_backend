@@ -125,13 +125,23 @@ def payment_webhook(request):
         updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
         logger.info(f"Payment status update result: {updated}")
         
+        # Extract offerId from multiple sources (request, metadata, payment_data)
+        metadata = payment_data.get('metadata', {}) or data.get('metadata', {})
+        offer_id_final = (
+            offer_id_from_request or 
+            metadata.get('offerId') or 
+            metadata.get('offer_id') or
+            payment_data.get('offerId') or
+            data.get('offerId')
+        )
+        
         # If we have offerId and payment is paid, update offer status directly (even if order not found)
-        if payment_status == 'paid' and offer_id_from_request:
+        if payment_status == 'paid' and offer_id_final:
             from products.models import Offer as OfferModel
-            offer = OfferModel.objects(id=offer_id_from_request).first()
+            offer = OfferModel.objects(id=offer_id_final).first()
             if offer:
                 if offer.status != 'paid':
-                    logger.info(f"Directly updating offer {offer.id} status from '{offer.status}' to 'paid' (from offerId in request)")
+                    logger.info(f"Directly updating offer {offer.id} status from '{offer.status}' to 'paid' (from offerId: {offer_id_final})")
                     offer.status = 'paid'
                     offer.updated_at = datetime.utcnow()
                     offer.save()
@@ -139,7 +149,7 @@ def payment_webhook(request):
                 else:
                     logger.info(f"Offer {offer.id} already has status 'paid'")
             else:
-                logger.warning(f"Offer not found with ID: {offer_id_from_request}")
+                logger.warning(f"Offer not found with ID: {offer_id_final}")
         
         # If update was successful, verify offer status was updated
         if updated and payment_status == 'paid':
@@ -245,16 +255,35 @@ def payment_webhook(request):
                     }
                 }, status=status.HTTP_200_OK)
         
-        # Verify the update was successful by checking if offer status was updated
-        if updated and payment_status == 'paid':
-            from payments.models import Payment
-            from products.models import Order, Offer
-            # Double-check that offer status was updated
-            payment_check = Payment.objects(moyasar_payment_id=payment_id).first()
-            if payment_check and payment_check.order_id and payment_check.order_id.offer_id:
-                offer_check = Offer.objects(id=payment_check.order_id.offer_id.id).first()
-                if offer_check:
-                    logger.info(f"Final verification - Offer {offer_check.id} status: '{offer_check.status}'")
+        # Final verification: Ensure offer status is updated if payment is paid
+        if payment_status == 'paid':
+            from products.models import Offer as OfferModel
+            
+            # Try to find offer from order (if order exists)
+            if updated:
+                from payments.models import Payment as PaymentModel
+                from products.models import Order as OrderModel
+                payment_check = PaymentModel.objects(moyasar_payment_id=payment_id).first()
+                if payment_check and payment_check.order_id and payment_check.order_id.offer_id:
+                    offer_check = OfferModel.objects(id=payment_check.order_id.offer_id.id).first()
+                    if offer_check and offer_check.status != 'paid':
+                        logger.warning(f"Final check: Offer {offer_check.id} status is still '{offer_check.status}', forcing update")
+                        offer_check.status = 'paid'
+                        offer_check.updated_at = datetime.utcnow()
+                        offer_check.save()
+                        logger.info(f"✅ Final update: Offer {offer_check.id} status set to 'paid'")
+                    elif offer_check:
+                        logger.info(f"Final verification - Offer {offer_check.id} status: '{offer_check.status}'")
+            
+            # Also try to update offer directly from offerId if we have it
+            if offer_id_final:
+                offer_final = OfferModel.objects(id=offer_id_final).first()
+                if offer_final and offer_final.status != 'paid':
+                    logger.info(f"Final check: Updating offer {offer_final.id} status to 'paid' from offerId")
+                    offer_final.status = 'paid'
+                    offer_final.updated_at = datetime.utcnow()
+                    offer_final.save()
+                    logger.info(f"✅ Final update: Offer {offer_final.id} status set to 'paid'")
         
         return Response({
             'success': True,
@@ -262,7 +291,8 @@ def payment_webhook(request):
             'data': {
                 'payment_id': payment_id,
                 'status': payment_status,
-                'updated': updated
+                'updated': updated,
+                'offerId': offer_id_final
             }
         }, status=status.HTTP_200_OK)
     except Exception as e:
