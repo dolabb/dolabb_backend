@@ -978,8 +978,9 @@ class OrderService:
         while Order.objects(order_number=order_number).first():
             order_number = OrderService.generate_order_number()
         
-        # Get affiliate code if provided
+        # Get affiliate code if provided in checkout, otherwise will use product's affiliate_code (from listing)
         affiliate_code = data.get('affiliateCode', '').strip() if data.get('affiliateCode') else None
+        
         affiliate = None
         if affiliate_code:
             from authentication.models import Affiliate
@@ -999,6 +1000,15 @@ class OrderService:
             if str(buyer_id) == str(offer.seller_id.id):
                 raise ValueError("You cannot purchase your own product")
             
+            # If no affiliate code in checkout, use product's affiliate_code (from listing)
+            if not affiliate_code and product and product.affiliate_code:
+                affiliate_code = product.affiliate_code.strip()
+                if affiliate_code:
+                    from authentication.models import Affiliate
+                    affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
+                    if not affiliate:
+                        affiliate_code = None  # Invalid affiliate code, ignore it
+            
             base_amount = offer.offer_amount
             shipping = offer.shipping_cost
             subtotal = base_amount + shipping
@@ -1015,6 +1025,15 @@ class OrderService:
             # Prevent sellers from buying their own products
             if str(buyer_id) == str(product.seller_id.id):
                 raise ValueError("You cannot purchase your own product")
+            
+            # If no affiliate code in checkout, use product's affiliate_code (from listing)
+            if not affiliate_code and product.affiliate_code:
+                affiliate_code = product.affiliate_code.strip()
+                if affiliate_code:
+                    from authentication.models import Affiliate
+                    affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
+                    if not affiliate:
+                        affiliate_code = None  # Invalid affiliate code, ignore it
             
             seller = User.objects(id=product.seller_id.id).first()
             base_amount = product.price
@@ -1120,14 +1139,24 @@ class OrderService:
         return order
     
     @staticmethod
-    def update_affiliate_earnings_on_payment_completion(order):
+    def update_affiliate_earnings_on_review_and_shipment(order):
         """
-        Update affiliate earnings when order payment is completed
-        This should only be called when payment_status changes to 'completed'
-        Earnings are only updated when product is SOLD (payment completed)
+        Update affiliate earnings when buyer submits review AND seller has uploaded shipment_proof
+        This ensures earnings are only credited when the transaction is fully completed:
+        - Payment is completed
+        - Buyer has reviewed
+        - Seller has uploaded shipment proof (can request payout)
         """
         # Only process if payment is completed
         if order.payment_status != 'completed':
+            return
+        
+        # Only process if shipment proof is uploaded (seller can request payout)
+        if not order.shipment_proof or not order.shipment_proof.strip():
+            return
+        
+        # Only process if buyer has submitted review
+        if not order.review_submitted:
             return
             
         if not order.affiliate_code or order.affiliate_commission <= 0:
@@ -1151,11 +1180,11 @@ class OrderService:
                 # Already processed, skip to avoid double-counting
                 return
             
-            # Update total earnings (only when payment is completed)
+            # Update total earnings (only when review is submitted and shipment proof is uploaded)
             current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
             affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
             
-            # Update pending earnings (only when payment is completed)
+            # Update pending earnings (only when review is submitted and shipment proof is uploaded)
             current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
             affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
             
@@ -1168,7 +1197,7 @@ class OrderService:
                 existing_transaction.save()
             
         except Exception as e:
-            # Log error but don't fail payment processing
+            # Log error but don't fail the process
             import logging
             logging.error(f"Failed to update affiliate earnings: {str(e)}")
     
@@ -1207,6 +1236,14 @@ class OrderService:
             order.shipment_proof = shipment_proof
         order.updated_at = datetime.utcnow()
         order.save()
+        
+        # Reload order to get latest state
+        order.reload()
+        
+        # Update affiliate earnings if shipment_proof is uploaded AND review already exists
+        # This handles the case where seller uploads shipment_proof after buyer has reviewed
+        if shipment_proof and shipment_proof.strip() and order.review_submitted:
+            OrderService.update_affiliate_earnings_on_review_and_shipment(order)
         
         return order
 
@@ -1255,6 +1292,11 @@ class ReviewService:
         # Mark order as reviewed
         order.review_submitted = True
         order.save()
+        
+        # Update affiliate earnings if review is submitted AND shipment_proof is uploaded
+        # This ensures earnings are only credited when transaction is fully completed
+        if order.shipment_proof and order.shipment_proof.strip():
+            OrderService.update_affiliate_earnings_on_review_and_shipment(order)
         
         return review
     

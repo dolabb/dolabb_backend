@@ -86,10 +86,9 @@ class MoyasarPaymentService:
                     offer.updated_at = datetime.utcnow()
                     offer.save()
             
-            # Update affiliate earnings if payment is completed
-            if payment.status == 'completed':
-                from products.services import OrderService
-                OrderService.update_affiliate_earnings_on_payment_completion(order)
+            # Note: Affiliate earnings are NOT updated on payment completion
+            # They will be updated when buyer submits review AND seller has uploaded shipment_proof
+            # This ensures earnings are only credited when the transaction is fully completed
             
             return payment, payment_data
         except requests.exceptions.RequestException as e:
