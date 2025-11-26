@@ -13,11 +13,14 @@ class SellerService:
     @staticmethod
     def get_seller_earnings(seller_id):
         """
-        Calculate seller earnings summary:
-        - totalEarnings: Sum of all seller_payout from completed orders
+        Calculate seller earnings summary with shipment proof security:
+        - totalEarnings: Sum of seller_payout from completed orders WITH shipment_proof uploaded
         - totalPayouts: Sum of all approved payout requests
-        - pendingPayouts: Sum of all pending payout requests
+        - pendingPayouts: Sum of pending payout requests + orders without shipment_proof
         - availableBalance: totalEarnings - totalPayouts - pendingPayouts
+        
+        Security: Orders without shipment_proof are NOT added to available balance
+        until seller uploads shipment proof.
         """
         # Get all completed orders (payment_status='completed')
         completed_orders = Order.objects(
@@ -25,10 +28,30 @@ class SellerService:
             payment_status='completed'
         )
         
-        # Calculate total earnings from completed sales
+        # Separate orders with and without shipment proof
+        orders_with_proof = []
+        orders_without_proof = []
+        
+        for order in completed_orders:
+            if order.shipment_proof and order.shipment_proof.strip():
+                # Order has shipment proof uploaded
+                orders_with_proof.append(order)
+            else:
+                # Order is pending shipment proof upload
+                orders_without_proof.append(order)
+        
+        # Calculate total earnings ONLY from orders with shipment proof
+        # This is the amount that can be withdrawn
         total_earnings = sum(
             float(order.seller_payout) if order.seller_payout else 0.0 
-            for order in completed_orders
+            for order in orders_with_proof
+        )
+        
+        # Calculate pending earnings from orders without shipment proof
+        # These are "locked" until shipment proof is uploaded
+        pending_shipment_proof_amount = sum(
+            float(order.seller_payout) if order.seller_payout else 0.0
+            for order in orders_without_proof
         )
         
         # Get all payout requests for this seller
@@ -40,14 +63,17 @@ class SellerService:
             for req in payout_requests
         )
         
-        # Calculate pending payouts
-        pending_payouts = sum(
+        # Calculate pending payout requests
+        pending_payout_requests = sum(
             float(req.amount) if req.status == 'pending' else 0.0
             for req in payout_requests
         )
         
-        # Calculate available balance
-        available_balance = total_earnings - total_payouts - pending_payouts
+        # Total pending payouts = pending payout requests + orders waiting for shipment proof
+        pending_payouts = pending_payout_requests + pending_shipment_proof_amount
+        
+        # Calculate available balance (only from orders with shipment proof)
+        available_balance = total_earnings - total_payouts - pending_payout_requests
         
         # Ensure available balance is not negative
         if available_balance < 0:
@@ -57,7 +83,8 @@ class SellerService:
             'totalEarnings': round(total_earnings, 2),
             'totalPayouts': round(total_payouts, 2),
             'pendingPayouts': round(pending_payouts, 2),
-            'availableBalance': round(available_balance, 2)
+            'availableBalance': round(available_balance, 2),
+            'pendingShipmentProof': round(pending_shipment_proof_amount, 2)  # Additional info
         }
     
     @staticmethod

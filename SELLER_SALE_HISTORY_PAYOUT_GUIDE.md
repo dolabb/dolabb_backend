@@ -6,6 +6,15 @@ This guide documents the APIs and functionality for sellers to view their sale
 history and manage payouts. Sellers can access these features through the
 Profile page under "Sale History" and "Payout" tabs.
 
+## Security Feature: Shipment Proof Requirement
+
+**IMPORTANT:** For security purposes, seller earnings are only added to the available balance **after shipment proof is uploaded**. 
+
+- Orders with `payment_status='completed'` but **no shipment proof** are locked in `pendingPayouts`
+- Only orders with both `payment_status='completed'` AND `shipment_proof` uploaded are counted in `totalEarnings` and `availableBalance`
+- This ensures sellers cannot withdraw funds until they provide proof of shipment
+- Upload shipment proof via `PUT /api/user/payments/{order_id}/ship/` with `shipmentProof` file or `shipmentProofUrl`
+
 ---
 
 ## Base URL
@@ -155,18 +164,24 @@ Authorization: Bearer <token>
     "totalEarnings": 5000.0,
     "totalPayouts": 3000.0,
     "pendingPayouts": 500.0,
-    "availableBalance": 1500.0
+    "availableBalance": 1500.0,
+    "pendingShipmentProof": 200.0
   }
 }
 ```
 
 **Key Fields:**
 
-- `totalEarnings`: Sum of all seller payouts from completed sales
+- `totalEarnings`: Sum of all seller payouts from completed sales **WITH shipment proof uploaded**
 - `totalPayouts`: Sum of all approved payout requests
-- `pendingPayouts`: Sum of all pending payout requests
-- `availableBalance`: Amount available for payout (totalEarnings -
-  totalPayouts - pendingPayouts)
+- `pendingPayouts`: Sum of all pending payout requests + orders without shipment proof
+- `availableBalance`: Amount available for payout (totalEarnings - totalPayouts - pending payout requests)
+- `pendingShipmentProof`: Amount locked until shipment proof is uploaded
+
+**Security Note:**
+- Orders without shipment proof are NOT added to `availableBalance`
+- Earnings are only available for payout after shipment proof is uploaded
+- Orders with `payment_status='completed'` but no `shipment_proof` are counted in `pendingPayouts`
 
 **Frontend Implementation:**
 
@@ -572,6 +587,14 @@ curl -X GET "https://dolabb-backend-2vsj.onrender.com/api/seller/payout-requests
 
 5. **Real-time Updates:** After submitting a payout request, the frontend
    automatically refreshes the payout requests list to show the new request.
+
+6. **Shipment Proof Security:**
+   - **CRITICAL:** Earnings are only added to `availableBalance` after shipment proof is uploaded
+   - Orders with `payment_status='completed'` but no `shipment_proof` are locked in `pendingPayouts`
+   - Sellers must upload shipment proof via:
+     - `PUT /api/user/payments/{order_id}/ship/` (with `shipmentProof` file or `shipmentProofUrl`)
+     - `POST /api/offers/{offer_id}/upload-shipment-proof/` (for offer-based orders)
+   - Once shipment proof is uploaded, the order amount is immediately available for payout
 
 ---
 

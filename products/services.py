@@ -1190,8 +1190,12 @@ class OrderService:
         return orders, total
     
     @staticmethod
-    def update_order_status(order_id, seller_id, status, tracking_number=None):
-        """Update order status (for shipping)"""
+    def update_order_status(order_id, seller_id, status, tracking_number=None, shipment_proof=None):
+        """
+        Update order status (for shipping)
+        If shipment_proof is provided, it will be saved to the order.
+        This is required for earnings to be available for payout.
+        """
         order = Order.objects(id=order_id, seller_id=seller_id).first()
         if not order:
             raise ValueError("Order not found")
@@ -1199,6 +1203,8 @@ class OrderService:
         order.status = status
         if tracking_number:
             order.tracking_number = tracking_number
+        if shipment_proof:
+            order.shipment_proof = shipment_proof
         order.updated_at = datetime.utcnow()
         order.save()
         

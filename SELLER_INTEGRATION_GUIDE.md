@@ -24,6 +24,14 @@ The Seller Sale History & Payout system consists of four main features:
 3. **Payout Request** - Request withdrawal of available balance
 4. **Payout History** - View all payout requests and their status
 
+### Security Feature: Shipment Proof Requirement
+
+**IMPORTANT:** For security, seller earnings are only added to available balance **after shipment proof is uploaded**.
+
+- Orders with completed payment but no shipment proof are locked in `pendingPayouts`
+- Only orders with both completed payment AND shipment proof are available for payout
+- Sellers must upload shipment proof when shipping orders to unlock earnings
+
 ---
 
 ## Authentication
@@ -115,10 +123,13 @@ https://dolabb-backend-2vsj.onrender.com
     "totalEarnings": 5000.0,
     "totalPayouts": 3000.0,
     "pendingPayouts": 500.0,
-    "availableBalance": 1500.0
+    "availableBalance": 1500.0,
+    "pendingShipmentProof": 200.0
   }
 }
 ```
+
+**Note:** `pendingShipmentProof` shows the amount locked until shipment proof is uploaded.
 
 ---
 
