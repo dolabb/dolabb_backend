@@ -88,6 +88,7 @@ def get_user_orders(request):
                 'buyer' if user_type == 'seller' else 'seller': other_user,
                 'orderDate': order.created_at.isoformat(),
                 'status': order.status,
+                'paymentStatus': order.payment_status,  # 'pending', 'completed', 'failed'
                 'totalPrice': order.total_price,
                 'shippingAddress': {
                     'fullName': order.full_name,
@@ -106,6 +107,7 @@ def get_user_orders(request):
                 order_data['platformFee'] = order.dolabb_fee
                 order_data['sellerPayout'] = order.seller_payout
                 order_data['affiliateCode'] = order.affiliate_code or ''
+                order_data['paymentId'] = order.payment_id or ''
             
             orders_list.append(order_data)
         

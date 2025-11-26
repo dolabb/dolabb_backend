@@ -1,6 +1,7 @@
 """
 Offer views
 """
+import logging
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -11,6 +12,8 @@ from payments.models import Payment
 import os
 from django.conf import settings
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['POST'])
@@ -67,7 +70,29 @@ def get_offers(request):
         offers_list = []
         for offer in offers:
             product = Product.objects(id=offer.product_id.id).first()
-            offers_list.append({
+            
+            # Get associated order if exists
+            order = Order.objects(offer_id=offer.id).first()
+            
+            # Get payment details if order exists
+            payment_object = None
+            
+            if order and order.payment_status == 'completed':
+                payment_id = order.payment_id
+                moyasar_payment_id = None
+                
+                # Get Moyasar payment ID from Payment model
+                if payment_id:
+                    payment = Payment.objects(moyasar_payment_id=payment_id).first()
+                    if payment:
+                        moyasar_payment_id = payment.moyasar_payment_id
+                
+                # Only add payment object when payment is completed
+                payment_object = {
+                    'status': 'paid'
+                }
+            
+            offer_data = {
                 'id': str(offer.id),
                 'productId': str(offer.product_id.id),
                 'productTitle': product.title if product else '',
@@ -85,13 +110,61 @@ def get_offers(request):
                 'expirationDate': offer.expiration_date.isoformat() if offer.expiration_date else None,
                 'counterOfferAmount': offer.counter_offer_amount,
                 'createdAt': offer.created_at.isoformat()
-            })
+            }
+            
+            # Only add payment object when payment is paid
+            if payment_object:
+                offer_data['payment'] = payment_object
+            
+            offers_list.append(offer_data)
         
-        return Response({
+        response_data = {
             'success': True,
             'offers': offers_list
-        }, status=status.HTTP_200_OK)
+        }
+        
+        # Log data to console for buyer profile offers section
+        if user_type == 'buyer':
+            logger.info("=" * 80)
+            logger.info("GET ALL OFFERS API - BUYER PROFILE OFFERS SECTION")
+            logger.info("=" * 80)
+            logger.info(f"User ID: {user_id}")
+            logger.info(f"User Type: {user_type}")
+            logger.info(f"Total Offers: {len(offers_list)}")
+            logger.info("-" * 80)
+            logger.info("OFFERS DATA:")
+            logger.info(f"{response_data}")
+            logger.info("-" * 80)
+            for idx, offer_data in enumerate(offers_list, 1):
+                logger.info(f"Offer #{idx}:")
+                logger.info(f"  - ID: {offer_data.get('id')}")
+                logger.info(f"  - Product ID: {offer_data.get('productId')}")
+                logger.info(f"  - Product Title: {offer_data.get('productTitle')}")
+                logger.info(f"  - Offer Amount: {offer_data.get('offerAmount')}")
+                logger.info(f"  - Original Price: {offer_data.get('originalPrice')}")
+                logger.info(f"  - Status: {offer_data.get('status')}")
+                if offer_data.get('payment'):
+                    logger.info(f"  - Payment Status: {offer_data.get('payment').get('status')}")
+                logger.info(f"  - Counter Offer Amount: {offer_data.get('counterOfferAmount')}")
+                logger.info(f"  - Created At: {offer_data.get('createdAt')}")
+                logger.info("-" * 80)
+            logger.info("=" * 80)
+            # Also print to console for immediate visibility
+            print("\n" + "=" * 80)
+            print("GET ALL OFFERS API - BUYER PROFILE OFFERS SECTION")
+            print("=" * 80)
+            print(f"User ID: {user_id}")
+            print(f"User Type: {user_type}")
+            print(f"Total Offers: {len(offers_list)}")
+            print("-" * 80)
+            print("OFFERS DATA:")
+            import json
+            print(json.dumps(response_data, indent=2))
+            print("=" * 80 + "\n")
+        
+        return Response(response_data, status=status.HTTP_200_OK)
     except Exception as e:
+        logger.error(f"Error in get_offers: {str(e)}")
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
