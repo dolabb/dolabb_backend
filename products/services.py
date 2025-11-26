@@ -818,6 +818,10 @@ class OfferService:
         buyer = User.objects(id=buyer_id).first()
         seller = User.objects(id=product.seller_id.id).first()
         
+        # Prevent sellers from buying their own products
+        if str(buyer_id) == str(product.seller_id.id):
+            raise ValueError("You cannot make an offer on your own product")
+        
         offer = Offer(
             product_id=product_id,
             buyer_id=buyer_id,
@@ -990,6 +994,11 @@ class OrderService:
                 raise ValueError("Invalid offer")
             
             product = Product.objects(id=offer.product_id.id).first()
+            
+            # Prevent sellers from buying their own products
+            if str(buyer_id) == str(offer.seller_id.id):
+                raise ValueError("You cannot purchase your own product")
+            
             base_amount = offer.offer_amount
             shipping = offer.shipping_cost
             subtotal = base_amount + shipping
@@ -1002,6 +1011,10 @@ class OrderService:
             product = Product.objects(id=product_id).first()
             if not product:
                 raise ValueError("Product not found")
+            
+            # Prevent sellers from buying their own products
+            if str(buyer_id) == str(product.seller_id.id):
+                raise ValueError("You cannot purchase your own product")
             
             seller = User.objects(id=product.seller_id.id).first()
             base_amount = product.price

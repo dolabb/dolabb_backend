@@ -221,6 +221,7 @@ def get_accepted_offers(request):
                 'shippingAddress': offer.shipping_address or '',
                 'zipCode': offer.zip_code or '',
                 'houseNumber': offer.house_number or '',
+                'status': offer.status,  # 'accepted', 'paid', etc.
                 'paymentStatus': payment_status,  # 'pending', 'completed', 'failed', 'not_paid'
                 'isPaidOnMoyasar': payment_status == 'completed',
                 'moyasarPaymentId': moyasar_payment_id,
@@ -248,8 +249,8 @@ def get_accepted_offer_detail(request, offer_id):
     try:
         seller_id = str(request.user.id)
         
-        # Get the offer
-        offer = Offer.objects(id=offer_id, seller_id=seller_id, status='accepted').first()
+        # Get the offer (accepted or paid)
+        offer = Offer.objects(id=offer_id, seller_id=seller_id, status__in=['accepted', 'paid']).first()
         if not offer:
             return Response({
                 'success': False,
@@ -316,6 +317,7 @@ def get_accepted_offer_detail(request, offer_id):
             'shippingAddress': offer.shipping_address or '',
             'zipCode': offer.zip_code or '',
             'houseNumber': offer.house_number or '',
+            'status': offer.status,  # 'accepted', 'paid', etc.
             'paymentStatus': payment_status,  # 'pending', 'completed', 'failed', 'not_paid'
             'isPaidOnMoyasar': payment_status == 'completed',
             'moyasarPaymentId': moyasar_payment_id,
