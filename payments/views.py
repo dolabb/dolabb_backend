@@ -93,36 +93,96 @@ def payment_webhook(request):
         payment_id = data.get('id')
         payment_status = data.get('status')
         
-        # Update payment status
-        from payments.models import Payment
-        from products.services import OrderService
-        from products.models import Offer
-        payment = Payment.objects(moyasar_payment_id=payment_id).first()
-        if payment:
-            if payment_status == 'paid':
-                payment.status = 'completed'
-                payment.order_id.payment_status = 'completed'
-                # Set order status to 'packed' after payment is completed
-                payment.order_id.status = 'packed'
-                payment.order_id.save()
-                
-                # Update offer status from 'accepted' to 'paid' if order has an associated offer
-                if payment.order_id.offer_id:
-                    offer = Offer.objects(id=payment.order_id.offer_id.id).first()
-                    if offer and offer.status == 'accepted':
-                        offer.status = 'paid'
-                        offer.updated_at = datetime.utcnow()
-                        offer.save()
-                
-                # Update affiliate earnings when payment is completed
-                OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
-            elif payment_status == 'failed':
-                payment.status = 'failed'
-                payment.order_id.payment_status = 'failed'
-                payment.order_id.save()
-            payment.save()
+        # Update payment status using the service method
+        updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
+        
+        if not updated:
+            # If payment not found, try to create it from order_id if provided
+            order_id = data.get('metadata', {}).get('order_id')
+            if order_id:
+                from payments.models import Payment
+                from products.models import Order
+                order = Order.objects(id=order_id).first()
+                if order:
+                    # Create payment record if it doesn't exist
+                    payment = Payment(
+                        order_id=order_id,
+                        buyer_id=order.buyer_id.id,
+                        moyasar_payment_id=payment_id,
+                        amount=float(data.get('amount', 0)) / 100,
+                        currency=data.get('currency', 'SAR'),
+                        status='completed' if payment_status == 'paid' else 'pending',
+                        metadata=data
+                    )
+                    payment.save()
+                    # Update status
+                    MoyasarPaymentService.update_payment_status(payment_id, payment_status)
         
         return Response({'success': True}, status=status.HTTP_200_OK)
     except Exception as e:
+        import logging
+        logging.error(f"Payment webhook error: {str(e)}")
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def verify_payment(request):
+    """Verify payment status from Moyasar and update local records"""
+    try:
+        moyasar_payment_id = request.data.get('paymentId') or request.data.get('payment_id')
+        
+        if not moyasar_payment_id:
+            return Response({
+                'success': False,
+                'error': 'Payment ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify payment status from Moyasar
+        payment_data = MoyasarPaymentService.verify_payment_status(moyasar_payment_id)
+        payment_status = payment_data.get('status')
+        
+        # Update payment status
+        updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
+        
+        if not updated:
+            # Try to find or create payment record by order_id
+            order_id = request.data.get('orderId') or request.data.get('order_id')
+            if order_id:
+                from payments.models import Payment
+                from products.models import Order
+                order = Order.objects(id=order_id).first()
+                if order:
+                    # Check if payment exists
+                    payment = Payment.objects(order_id=order_id).first()
+                    if not payment:
+                        # Create payment record
+                        payment = Payment(
+                            order_id=order_id,
+                            buyer_id=order.buyer_id.id,
+                            moyasar_payment_id=moyasar_payment_id,
+                            amount=float(payment_data.get('amount', 0)) / 100,
+                            currency=payment_data.get('currency', 'SAR'),
+                            status='completed' if payment_status == 'paid' else 'pending',
+                            metadata=payment_data
+                        )
+                        payment.save()
+                    
+                    # Update status
+                    MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
+                    updated = True
+        
+        return Response({
+            'success': True,
+            'payment': {
+                'id': moyasar_payment_id,
+                'status': payment_status,
+                'updated': updated
+            }
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        import logging
+        logging.error(f"Verify payment error: {str(e)}")
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -96,6 +96,78 @@ class MoyasarPaymentService:
             raise ValueError(f"Payment processing failed: {str(e)}")
     
     @staticmethod
+    def verify_payment_status(moyasar_payment_id):
+        """Verify payment status from Moyasar API"""
+        try:
+            url = f"{settings.MOYASAR_API_URL}/{moyasar_payment_id}"
+            headers = {
+                'Authorization': f'Bearer {settings.MOYASAR_SECRET_KEY}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            payment_data = response.json()
+            
+            return payment_data
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Failed to verify payment status: {str(e)}")
+    
+    @staticmethod
+    def update_payment_status(moyasar_payment_id, payment_status):
+        """Update payment, order, and offer status when payment is completed"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        from products.services import OrderService
+        
+        # Find payment by moyasar_payment_id
+        payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
+        
+        if not payment:
+            logger.warning(f"Payment not found with moyasar_payment_id: {moyasar_payment_id}")
+            return False
+        
+        logger.info(f"Updating payment status: {moyasar_payment_id} -> {payment_status}")
+        
+        if payment_status == 'paid':
+            payment.status = 'completed'
+            payment.order_id.payment_status = 'completed'
+            # Set order status to 'packed' after payment is completed
+            payment.order_id.status = 'packed'
+            payment.order_id.save()
+            logger.info(f"Order {payment.order_id.id} status updated to 'packed'")
+            
+            # Update offer status from 'accepted' to 'paid' if order has an associated offer
+            if payment.order_id.offer_id:
+                offer = Offer.objects(id=payment.order_id.offer_id.id).first()
+                if offer:
+                    if offer.status != 'paid':
+                        # Update offer status to 'paid' when payment is completed
+                        logger.info(f"Updating offer {offer.id} status from '{offer.status}' to 'paid'")
+                        offer.status = 'paid'
+                        offer.updated_at = datetime.utcnow()
+                        offer.save()
+                        logger.info(f"Offer {offer.id} status updated to 'paid'")
+                    else:
+                        logger.info(f"Offer {offer.id} already has status 'paid'")
+                else:
+                    logger.warning(f"Offer not found for order {payment.order_id.id}")
+            else:
+                logger.info(f"Order {payment.order_id.id} has no associated offer")
+            
+            # Update affiliate earnings when payment is completed
+            OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
+        elif payment_status == 'failed':
+            payment.status = 'failed'
+            payment.order_id.payment_status = 'failed'
+            payment.order_id.save()
+            logger.info(f"Payment {moyasar_payment_id} marked as failed")
+        
+        payment.save()
+        return True
+    
+    @staticmethod
     def verify_webhook(signature, payload):
         """Verify webhook signature (if Moyasar provides webhook verification)"""
         # Implement webhook verification if needed
