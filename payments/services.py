@@ -120,15 +120,36 @@ class MoyasarPaymentService:
         logger = logging.getLogger(__name__)
         
         from products.services import OrderService
+        from products.models import Order
         
         # Find payment by moyasar_payment_id
         payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
         
+        # If payment not found, try to find order by payment_id
         if not payment:
             logger.warning(f"Payment not found with moyasar_payment_id: {moyasar_payment_id}")
-            return False
+            # Try to find order by payment_id
+            order = Order.objects(payment_id=moyasar_payment_id).first()
+            if order:
+                logger.info(f"Found order {order.id} by payment_id, creating payment record")
+                # Create payment record
+                payment = Payment(
+                    order_id=order.id,
+                    buyer_id=order.buyer_id.id,
+                    moyasar_payment_id=moyasar_payment_id,
+                    amount=order.total_price,
+                    currency='SAR',
+                    status='completed' if payment_status == 'paid' else 'pending',
+                    metadata={}
+                )
+                payment.save()
+                logger.info(f"Created payment record for order {order.id}")
+            else:
+                logger.error(f"Could not find payment or order with moyasar_payment_id: {moyasar_payment_id}")
+                return False
         
         logger.info(f"Updating payment status: {moyasar_payment_id} -> {payment_status}")
+        logger.info(f"Payment record: {payment.id}, Order: {payment.order_id.id}")
         
         if payment_status == 'paid':
             payment.status = 'completed'
@@ -136,25 +157,28 @@ class MoyasarPaymentService:
             # Set order status to 'packed' after payment is completed
             payment.order_id.status = 'packed'
             payment.order_id.save()
-            logger.info(f"Order {payment.order_id.id} status updated to 'packed'")
+            logger.info(f"Order {payment.order_id.id} status updated to 'packed', payment_status: 'completed'")
             
             # Update offer status from 'accepted' to 'paid' if order has an associated offer
             if payment.order_id.offer_id:
-                offer = Offer.objects(id=payment.order_id.offer_id.id).first()
+                offer_id = payment.order_id.offer_id.id
+                logger.info(f"Order has associated offer: {offer_id}")
+                offer = Offer.objects(id=offer_id).first()
                 if offer:
+                    logger.info(f"Found offer {offer.id}, current status: '{offer.status}'")
                     if offer.status != 'paid':
                         # Update offer status to 'paid' when payment is completed
                         logger.info(f"Updating offer {offer.id} status from '{offer.status}' to 'paid'")
                         offer.status = 'paid'
                         offer.updated_at = datetime.utcnow()
                         offer.save()
-                        logger.info(f"Offer {offer.id} status updated to 'paid'")
+                        logger.info(f"✅ Offer {offer.id} status successfully updated to 'paid'")
                     else:
                         logger.info(f"Offer {offer.id} already has status 'paid'")
                 else:
-                    logger.warning(f"Offer not found for order {payment.order_id.id}")
+                    logger.warning(f"❌ Offer not found for ID: {offer_id}")
             else:
-                logger.info(f"Order {payment.order_id.id} has no associated offer")
+                logger.info(f"Order {payment.order_id.id} has no associated offer_id")
             
             # Update affiliate earnings when payment is completed
             OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
@@ -165,6 +189,7 @@ class MoyasarPaymentService:
             logger.info(f"Payment {moyasar_payment_id} marked as failed")
         
         payment.save()
+        logger.info(f"Payment {payment.id} saved successfully")
         return True
     
     @staticmethod

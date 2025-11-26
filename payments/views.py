@@ -81,6 +81,9 @@ def process_payment(request):
 @api_view(['POST'])
 def payment_webhook(request):
     """Handle Moyasar webhook"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         # Verify webhook signature
         signature = request.headers.get('X-Moyasar-Signature', '')
@@ -90,44 +93,123 @@ def payment_webhook(request):
         # MoyasarPaymentService.verify_webhook(signature, payload)
         
         data = request.data
-        payment_id = data.get('id')
-        payment_status = data.get('status')
+        logger.info(f"Webhook received data: {data}")
+        
+        # Handle nested data structure (data.data) or flat structure
+        payment_data = data.get('data', data)
+        
+        payment_id = payment_data.get('id')
+        payment_status = payment_data.get('status')
+        amount = payment_data.get('amount', 0)
+        
+        logger.info(f"Extracted payment_id: {payment_id}, status: {payment_status}")
+        
+        if not payment_id:
+            logger.error("Payment ID not found in webhook data")
+            return Response({
+                'success': False,
+                'error': 'Payment ID not found in webhook data'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not payment_status:
+            logger.error("Payment status not found in webhook data")
+            return Response({
+                'success': False,
+                'error': 'Payment status not found in webhook data'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Update payment status using the service method
         updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
+        logger.info(f"Payment status update result: {updated}")
         
         if not updated:
-            # If payment not found, try to create it from order_id if provided
-            order_id = data.get('metadata', {}).get('order_id')
-            if order_id:
-                from payments.models import Payment
-                from products.models import Order
-                order = Order.objects(id=order_id).first()
-                if order:
-                    # Create payment record if it doesn't exist
+            logger.warning(f"Payment not found with moyasar_payment_id: {payment_id}, trying to find by order")
+            # If payment not found, try to find order by payment_id in order.payment_id
+            from payments.models import Payment
+            from products.models import Order, Offer
+            
+            # Try to find order by payment_id
+            order = Order.objects(payment_id=payment_id).first()
+            
+            # If not found, try to find by offerId from metadata
+            if not order:
+                metadata = payment_data.get('metadata', {})
+                offer_id = metadata.get('offerId') or metadata.get('offer_id')
+                logger.info(f"Looking for order by offerId from metadata: {offer_id}")
+                
+                if offer_id:
+                    # Find offer
+                    offer = Offer.objects(id=offer_id).first()
+                    if offer:
+                        logger.info(f"Found offer {offer.id}, looking for associated order")
+                        # Find order by offer_id
+                        order = Order.objects(offer_id=offer.id).first()
+                        if order:
+                            logger.info(f"Found order {order.id} by offer_id")
+                        else:
+                            logger.warning(f"No order found for offer {offer.id}")
+                    else:
+                        logger.warning(f"Offer not found: {offer_id}")
+            
+            # If still not found, try to find by metadata order_id
+            if not order:
+                order_id = payment_data.get('metadata', {}).get('order_id') or data.get('metadata', {}).get('order_id')
+                if order_id:
+                    logger.info(f"Trying to find order by order_id: {order_id}")
+                    order = Order.objects(id=order_id).first()
+            
+            if order:
+                logger.info(f"Found order {order.id}")
+                # Create payment record if it doesn't exist
+                existing_payment = Payment.objects(moyasar_payment_id=payment_id).first()
+                if not existing_payment:
                     payment = Payment(
-                        order_id=order_id,
+                        order_id=order.id,
                         buyer_id=order.buyer_id.id,
                         moyasar_payment_id=payment_id,
-                        amount=float(data.get('amount', 0)) / 100,
-                        currency=data.get('currency', 'SAR'),
+                        amount=float(amount) / 100 if amount else 0,
+                        currency=payment_data.get('currency', 'SAR'),
                         status='completed' if payment_status == 'paid' else 'pending',
-                        metadata=data
+                        metadata=payment_data
                     )
                     payment.save()
-                    # Update status
-                    MoyasarPaymentService.update_payment_status(payment_id, payment_status)
+                    logger.info(f"Created payment record for order {order.id}")
+                
+                # Update order payment_id if not set
+                if not order.payment_id:
+                    order.payment_id = payment_id
+                    order.save()
+                    logger.info(f"Updated order {order.id} payment_id")
+                
+                # Update status
+                updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
+                logger.info(f"Payment status update after creation: {updated}")
+            else:
+                logger.error(f"Could not find order for payment {payment_id}")
         
-        return Response({'success': True}, status=status.HTTP_200_OK)
+        return Response({
+            'success': True,
+            'message': 'Webhook processed successfully',
+            'data': {
+                'payment_id': payment_id,
+                'status': payment_status,
+                'updated': updated
+            }
+        }, status=status.HTTP_200_OK)
     except Exception as e:
-        import logging
-        logging.error(f"Payment webhook error: {str(e)}")
-        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Payment webhook error: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def verify_payment(request):
     """Verify payment status from Moyasar and update local records"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         moyasar_payment_id = request.data.get('paymentId') or request.data.get('payment_id')
         
@@ -137,39 +219,83 @@ def verify_payment(request):
                 'error': 'Payment ID is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        logger.info(f"Verifying payment: {moyasar_payment_id}")
+        
         # Verify payment status from Moyasar
         payment_data = MoyasarPaymentService.verify_payment_status(moyasar_payment_id)
         payment_status = payment_data.get('status')
+        logger.info(f"Payment status from Moyasar: {payment_status}")
         
         # Update payment status
         updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
+        logger.info(f"Payment status update result: {updated}")
         
         if not updated:
-            # Try to find or create payment record by order_id
-            order_id = request.data.get('orderId') or request.data.get('order_id')
-            if order_id:
-                from payments.models import Payment
-                from products.models import Order
-                order = Order.objects(id=order_id).first()
-                if order:
-                    # Check if payment exists
-                    payment = Payment.objects(order_id=order_id).first()
-                    if not payment:
-                        # Create payment record
-                        payment = Payment(
-                            order_id=order_id,
-                            buyer_id=order.buyer_id.id,
-                            moyasar_payment_id=moyasar_payment_id,
-                            amount=float(payment_data.get('amount', 0)) / 100,
-                            currency=payment_data.get('currency', 'SAR'),
-                            status='completed' if payment_status == 'paid' else 'pending',
-                            metadata=payment_data
-                        )
-                        payment.save()
-                    
-                    # Update status
-                    MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
-                    updated = True
+            logger.warning(f"Payment not found, trying to find/create payment record")
+            from payments.models import Payment
+            from products.models import Order, Offer
+            
+            # Try to find order by payment_id first
+            order = Order.objects(payment_id=moyasar_payment_id).first()
+            
+            # If not found, try to find by offerId from metadata
+            if not order:
+                metadata = payment_data.get('metadata', {})
+                offer_id = metadata.get('offerId') or metadata.get('offer_id')
+                logger.info(f"Looking for order by offerId from metadata: {offer_id}")
+                
+                if offer_id:
+                    # Find offer
+                    offer = Offer.objects(id=offer_id).first()
+                    if offer:
+                        logger.info(f"Found offer {offer.id}, looking for associated order")
+                        # Find order by offer_id
+                        order = Order.objects(offer_id=offer.id).first()
+                        if order:
+                            logger.info(f"Found order {order.id} by offer_id")
+                        else:
+                            logger.warning(f"No order found for offer {offer.id}")
+                    else:
+                        logger.warning(f"Offer not found: {offer_id}")
+            
+            # If still not found, try order_id from request
+            if not order:
+                order_id = request.data.get('orderId') or request.data.get('order_id')
+                if order_id:
+                    logger.info(f"Trying to find order by order_id: {order_id}")
+                    order = Order.objects(id=order_id).first()
+            
+            if order:
+                logger.info(f"Found order {order.id}, creating/updating payment record")
+                # Check if payment exists
+                payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
+                if not payment:
+                    # Create payment record
+                    payment = Payment(
+                        order_id=order.id,
+                        buyer_id=order.buyer_id.id,
+                        moyasar_payment_id=moyasar_payment_id,
+                        amount=float(payment_data.get('amount', 0)) / 100,
+                        currency=payment_data.get('currency', 'SAR'),
+                        status='completed' if payment_status == 'paid' else 'pending',
+                        metadata=payment_data
+                    )
+                    payment.save()
+                    logger.info(f"Created payment record for order {order.id}")
+                else:
+                    logger.info(f"Payment record already exists: {payment.id}")
+                
+                # Update order payment_id if not set
+                if not order.payment_id:
+                    order.payment_id = moyasar_payment_id
+                    order.save()
+                    logger.info(f"Updated order {order.id} payment_id")
+                
+                # Update status
+                updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
+                logger.info(f"Payment status update after creation: {updated}")
+            else:
+                logger.error(f"Could not find order for payment {moyasar_payment_id}")
         
         return Response({
             'success': True,
@@ -180,9 +306,9 @@ def verify_payment(request):
             }
         }, status=status.HTTP_200_OK)
     except ValueError as e:
+        logger.error(f"Verify payment ValueError: {str(e)}")
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        import logging
-        logging.error(f"Verify payment error: {str(e)}")
+        logger.error(f"Verify payment error: {str(e)}", exc_info=True)
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
