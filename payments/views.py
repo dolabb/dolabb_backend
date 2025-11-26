@@ -98,11 +98,14 @@ def payment_webhook(request):
         # Handle nested data structure (data.data) or flat structure
         payment_data = data.get('data', data)
         
-        payment_id = payment_data.get('id')
-        payment_status = payment_data.get('status')
-        amount = payment_data.get('amount', 0)
+        payment_id = payment_data.get('id') or data.get('id')
+        payment_status = payment_data.get('status') or data.get('status')
+        amount = payment_data.get('amount', data.get('amount', 0))
         
-        logger.info(f"Extracted payment_id: {payment_id}, status: {payment_status}")
+        # Extract offerId from request data if provided (frontend can send it)
+        offer_id_from_request = data.get('offerId') or data.get('offer_id') or payment_data.get('offerId')
+        
+        logger.info(f"Extracted payment_id: {payment_id}, status: {payment_status}, offerId: {offer_id_from_request}")
         
         if not payment_id:
             logger.error("Payment ID not found in webhook data")
@@ -160,8 +163,8 @@ def payment_webhook(request):
             # If not found, try to find by offerId from metadata
             if not order:
                 metadata = payment_data.get('metadata', {})
-                offer_id = metadata.get('offerId') or metadata.get('offer_id')
-                logger.info(f"Looking for order by offerId from metadata: {offer_id}")
+                offer_id = offer_id_from_request or metadata.get('offerId') or metadata.get('offer_id')
+                logger.info(f"Looking for order by offerId from metadata/request: {offer_id}")
                 
                 if offer_id:
                     # Find offer
@@ -288,11 +291,12 @@ def verify_payment(request):
             # Try to find order by payment_id first
             order = Order.objects(payment_id=moyasar_payment_id).first()
             
-            # If not found, try to find by offerId from metadata
+            # If not found, try to find by offerId from metadata or request
             if not order:
+                offer_id_from_request = request.data.get('offerId') or request.data.get('offer_id')
                 metadata = payment_data.get('metadata', {})
-                offer_id = metadata.get('offerId') or metadata.get('offer_id')
-                logger.info(f"Looking for order by offerId from metadata: {offer_id}")
+                offer_id = offer_id_from_request or metadata.get('offerId') or metadata.get('offer_id')
+                logger.info(f"Looking for order by offerId from metadata/request: {offer_id}")
                 
                 if offer_id:
                     # Find offer
