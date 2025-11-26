@@ -2,9 +2,10 @@
 Payment services
 """
 import requests
+from datetime import datetime
 from django.conf import settings
 from payments.models import Payment
-from products.models import Order
+from products.models import Order, Offer
 from products.services import OrderService
 
 
@@ -72,7 +73,18 @@ class MoyasarPaymentService:
             # Update order payment status
             order.payment_status = payment.status
             order.payment_id = payment_data.get('id')
+            # Set order status to 'packed' after payment is completed
+            if payment.status == 'completed':
+                order.status = 'packed'
             order.save()
+            
+            # Update offer status from 'accepted' to 'paid' if order has an associated offer
+            if payment.status == 'completed' and order.offer_id:
+                offer = Offer.objects(id=order.offer_id.id).first()
+                if offer and offer.status == 'accepted':
+                    offer.status = 'paid'
+                    offer.updated_at = datetime.utcnow()
+                    offer.save()
             
             # Update affiliate earnings if payment is completed
             if payment.status == 'completed':

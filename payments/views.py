@@ -1,6 +1,7 @@
 """
 Payment views
 """
+from datetime import datetime
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -95,12 +96,23 @@ def payment_webhook(request):
         # Update payment status
         from payments.models import Payment
         from products.services import OrderService
+        from products.models import Offer
         payment = Payment.objects(moyasar_payment_id=payment_id).first()
         if payment:
             if payment_status == 'paid':
                 payment.status = 'completed'
                 payment.order_id.payment_status = 'completed'
+                # Set order status to 'packed' after payment is completed
+                payment.order_id.status = 'packed'
                 payment.order_id.save()
+                
+                # Update offer status from 'accepted' to 'paid' if order has an associated offer
+                if payment.order_id.offer_id:
+                    offer = Offer.objects(id=payment.order_id.offer_id.id).first()
+                    if offer and offer.status == 'accepted':
+                        offer.status = 'paid'
+                        offer.updated_at = datetime.utcnow()
+                        offer.save()
                 
                 # Update affiliate earnings when payment is completed
                 OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
