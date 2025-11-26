@@ -125,6 +125,22 @@ def payment_webhook(request):
         updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
         logger.info(f"Payment status update result: {updated}")
         
+        # If we have offerId and payment is paid, update offer status directly (even if order not found)
+        if payment_status == 'paid' and offer_id_from_request:
+            from products.models import Offer as OfferModel
+            offer = OfferModel.objects(id=offer_id_from_request).first()
+            if offer:
+                if offer.status != 'paid':
+                    logger.info(f"Directly updating offer {offer.id} status from '{offer.status}' to 'paid' (from offerId in request)")
+                    offer.status = 'paid'
+                    offer.updated_at = datetime.utcnow()
+                    offer.save()
+                    logger.info(f"✅ Directly updated offer {offer.id} status to 'paid'")
+                else:
+                    logger.info(f"Offer {offer.id} already has status 'paid'")
+            else:
+                logger.warning(f"Offer not found with ID: {offer_id_from_request}")
+        
         # If update was successful, verify offer status was updated
         if updated and payment_status == 'paid':
             from payments.models import Payment as PaymentModel

@@ -74,10 +74,16 @@ def get_offers(request):
             # Get associated order if exists
             order = Order.objects(offer_id=offer.id).first()
             
-            # Get payment details if order exists
+            # Get payment details if order exists OR if offer status is 'paid'
             payment_object = None
             
-            if order and order.payment_status == 'completed':
+            # Check if offer status is 'paid' (direct check)
+            if offer.status == 'paid':
+                payment_object = {
+                    'status': 'paid'
+                }
+            # Also check order payment_status
+            elif order and order.payment_status == 'completed':
                 payment_id = order.payment_id
                 moyasar_payment_id = None
                 
@@ -256,10 +262,16 @@ def get_accepted_offers(request):
             order_id = None
             shipment_proof = None
             
+            # Check offer status first - if offer is 'paid', payment is completed
+            if offer.status == 'paid':
+                payment_status = 'completed'
+            
             if order:
                 order_id = str(order.id)
                 order_status = order.status
-                payment_status = order.payment_status
+                # Use order payment_status if it's completed, otherwise use offer status
+                if order.payment_status == 'completed':
+                    payment_status = 'completed'
                 payment_id = order.payment_id
                 shipment_proof = order.shipment_proof
                 
