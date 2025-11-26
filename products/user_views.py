@@ -110,6 +110,7 @@ def get_user_orders(request):
                 order_data['sellerPayout'] = order.seller_payout
                 order_data['affiliateCode'] = order.affiliate_code or ''
                 order_data['paymentId'] = order.payment_id or ''
+                order_data['shipmentProof'] = order.shipment_proof if hasattr(order, 'shipment_proof') and order.shipment_proof else None
             
             orders_list.append(order_data)
         
@@ -239,11 +240,14 @@ def ship_order(request, order_id):
                     'error': 'Shipment proof URL cannot be empty'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Update order status: 'delivered' if shipment proof provided, 'shipped' otherwise
+        order_status = 'delivered' if shipment_proof_url else 'shipped'
+        
         # Update order status with tracking number and shipment proof
         order = OrderService.update_order_status(
             order_id, 
             seller_id, 
-            'shipped', 
+            order_status, 
             tracking_number=tracking_number if tracking_number else None,
             shipment_proof=shipment_proof_url
         )
@@ -259,9 +263,9 @@ def ship_order(request, order_id):
         
         if shipment_proof_url:
             response_data['payment']['shipmentProof'] = order.shipment_proof
-            response_data['message'] = 'Order shipped with shipment proof. Earnings will be available for payout.'
+            response_data['message'] = 'Order marked as delivered with shipment proof. Earnings are now available for payout.'
         else:
-            response_data['message'] = 'Order shipped. Upload shipment proof to make earnings available for payout.'
+            response_data['message'] = 'Order shipped. Upload shipment proof to mark as delivered and make earnings available for payout.'
         
         return Response(response_data, status=status.HTTP_200_OK)
     
@@ -357,6 +361,54 @@ def get_seller_rating(request, seller_id):
         return Response({
             'success': True,
             'rating': stats
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_seller_reviews(request, seller_id):
+    """Get reviews/comments for a seller"""
+    try:
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        
+        reviews, total = ReviewService.get_reviews_for_seller(seller_id, page, limit)
+        
+        reviews_list = []
+        for review in reviews:
+            buyer = User.objects(id=review.buyer_id.id).first()
+            product = Product.objects(id=review.product_id.id).first()
+            
+            reviews_list.append({
+                'id': str(review.id),
+                'orderId': str(review.order_id.id),
+                'orderNumber': review.order_id.order_number if hasattr(review.order_id, 'order_number') else '',
+                'buyer': {
+                    'id': str(buyer.id) if buyer else '',
+                    'username': buyer.username if buyer else '',
+                    'fullName': buyer.full_name if buyer else '',
+                    'profileImage': buyer.profile_image if buyer else ''
+                },
+                'product': {
+                    'id': str(product.id) if product else '',
+                    'title': review.product_title or (product.title if product else ''),
+                    'image': product.images[0] if product and product.images else ''
+                },
+                'rating': review.rating,
+                'comment': review.comment,
+                'createdAt': review.created_at.isoformat()
+            })
+        
+        return Response({
+            'success': True,
+            'reviews': reviews_list,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit if total > 0 else 0,
+                'totalItems': total
+            }
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

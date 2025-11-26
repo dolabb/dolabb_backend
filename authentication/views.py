@@ -308,23 +308,43 @@ def get_profile(request):
         
         # Handle different user types
         if hasattr(user, 'username'):  # Regular User
+            user_data = {
+                'id': str(user.id),
+                'username': safe_get(user, 'username'),
+                'email': safe_get(user, 'email'),
+                'phone': safe_get(user, 'phone'),
+                'full_name': safe_get(user, 'full_name'),
+                'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
+                'bio': safe_get(user, 'bio') or '',
+                'location': safe_get(user, 'location') or '',
+                'shipping_address': safe_get(user, 'shipping_address') or '',
+                'zip_code': safe_get(user, 'zip_code') or '',
+                'house_number': safe_get(user, 'house_number') or '',
+                'joined_date': get_date_safe(user, 'join_date', 'created_at'),
+                'role': safe_get(user, 'role', 'buyer')
+            }
+            
+            # Add seller rating and review count if user is a seller
+            if safe_get(user, 'role', 'buyer') == 'seller':
+                try:
+                    from products.services import ReviewService
+                    rating_stats = ReviewService.get_seller_rating_stats(str(user.id))
+                    user_data['rating'] = {
+                        'averageRating': rating_stats['average_rating'],
+                        'totalReviews': rating_stats['total_reviews'],
+                        'ratingDistribution': rating_stats['rating_distribution']
+                    }
+                except Exception:
+                    # If rating service fails, set defaults
+                    user_data['rating'] = {
+                        'averageRating': 0.0,
+                        'totalReviews': 0,
+                        'ratingDistribution': {'5': 0, '4': 0, '3': 0, '2': 0, '1': 0}
+                    }
+            
             return Response({
                 'success': True,
-                'user': {
-                    'id': str(user.id),
-                    'username': safe_get(user, 'username'),
-                    'email': safe_get(user, 'email'),
-                    'phone': safe_get(user, 'phone'),
-                    'full_name': safe_get(user, 'full_name'),
-                    'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
-                    'bio': safe_get(user, 'bio') or '',
-                    'location': safe_get(user, 'location') or '',
-                    'shipping_address': safe_get(user, 'shipping_address') or '',
-                    'zip_code': safe_get(user, 'zip_code') or '',
-                    'house_number': safe_get(user, 'house_number') or '',
-                    'joined_date': get_date_safe(user, 'join_date', 'created_at'),
-                    'role': safe_get(user, 'role', 'buyer')
-                }
+                'user': user_data
             }, status=status.HTTP_200_OK)
         
         elif hasattr(user, 'name'):  # Admin
