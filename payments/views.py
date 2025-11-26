@@ -122,14 +122,40 @@ def payment_webhook(request):
         updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
         logger.info(f"Payment status update result: {updated}")
         
+        # If update was successful, verify offer status was updated
+        if updated and payment_status == 'paid':
+            from payments.models import Payment as PaymentModel
+            from products.models import Order as OrderModel, Offer as OfferModel
+            payment_check = PaymentModel.objects(moyasar_payment_id=payment_id).first()
+            if payment_check and payment_check.order_id and payment_check.order_id.offer_id:
+                offer_check = OfferModel.objects(id=payment_check.order_id.offer_id.id).first()
+                if offer_check and offer_check.status != 'paid':
+                    logger.warning(f"Offer {offer_check.id} status is still '{offer_check.status}', forcing update to 'paid'")
+                    offer_check.status = 'paid'
+                    offer_check.updated_at = datetime.utcnow()
+                    offer_check.save()
+                    logger.info(f"✅ Force updated offer {offer_check.id} status to 'paid'")
+        
         if not updated:
-            logger.warning(f"Payment not found with moyasar_payment_id: {payment_id}, trying to find by order")
+            logger.warning(f"Payment not found with moyasar_payment_id: {payment_id}, fetching full payment details from Moyasar")
+            # Fetch full payment details from Moyasar API to get metadata
+            try:
+                full_payment_data = MoyasarPaymentService.verify_payment_status(payment_id)
+                logger.info(f"Fetched full payment data from Moyasar: {full_payment_data.get('id')}")
+                # Use full payment data which includes metadata
+                payment_data = full_payment_data
+                amount = payment_data.get('amount', amount)
+            except Exception as e:
+                logger.warning(f"Could not fetch payment from Moyasar: {str(e)}, using webhook data")
+            
             # If payment not found, try to find order by payment_id in order.payment_id
             from payments.models import Payment
             from products.models import Order, Offer
             
             # Try to find order by payment_id
             order = Order.objects(payment_id=payment_id).first()
+            if order:
+                logger.info(f"Found order {order.id} by payment_id")
             
             # If not found, try to find by offerId from metadata
             if not order:
@@ -174,6 +200,8 @@ def payment_webhook(request):
                     )
                     payment.save()
                     logger.info(f"Created payment record for order {order.id}")
+                else:
+                    logger.info(f"Payment record already exists: {existing_payment.id}")
                 
                 # Update order payment_id if not set
                 if not order.payment_id:
@@ -181,11 +209,33 @@ def payment_webhook(request):
                     order.save()
                     logger.info(f"Updated order {order.id} payment_id")
                 
-                # Update status
+                # Update status - this will update payment, order, and offer
                 updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
                 logger.info(f"Payment status update after creation: {updated}")
             else:
-                logger.error(f"Could not find order for payment {payment_id}")
+                logger.error(f"Could not find order for payment {payment_id}. Payment data: {payment_data}")
+                # Still return success to avoid webhook retries, but log the error
+                return Response({
+                    'success': True,
+                    'message': 'Webhook received but order not found',
+                    'data': {
+                        'payment_id': payment_id,
+                        'status': payment_status,
+                        'updated': False,
+                        'warning': 'Order not found - payment record may need manual update'
+                    }
+                }, status=status.HTTP_200_OK)
+        
+        # Verify the update was successful by checking if offer status was updated
+        if updated and payment_status == 'paid':
+            from payments.models import Payment
+            from products.models import Order, Offer
+            # Double-check that offer status was updated
+            payment_check = Payment.objects(moyasar_payment_id=payment_id).first()
+            if payment_check and payment_check.order_id and payment_check.order_id.offer_id:
+                offer_check = Offer.objects(id=payment_check.order_id.offer_id.id).first()
+                if offer_check:
+                    logger.info(f"Final verification - Offer {offer_check.id} status: '{offer_check.status}'")
         
         return Response({
             'success': True,
