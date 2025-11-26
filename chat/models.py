@@ -22,7 +22,15 @@ class Message(Document):
     
     meta = {
         'collection': 'messages',
-        'indexes': ['conversation_id', 'sender_id', 'receiver_id', 'created_at']
+        'indexes': [
+            'conversation_id',
+            'sender_id',
+            'receiver_id',
+            'created_at',
+            # Composite indexes for common query patterns
+            [('conversation_id', 1), ('created_at', 1)],  # For paginated message retrieval
+            [('conversation_id', 1), ('receiver_id', 1), ('is_read', 1)]  # For unread messages query
+        ]
     }
 
 

@@ -66,8 +66,8 @@ class ChatService:
     
     @staticmethod
     def get_messages(conversation_id, user_id, page=1, limit=50):
-        """Get messages for a conversation"""
-        conversation = Conversation.objects(id=conversation_id).first()
+        """Get messages for a conversation - Optimized version"""
+        conversation = Conversation.objects(id=conversation_id).only('participants', 'unread_count_sender', 'unread_count_receiver').first()
         if not conversation:
             raise ValueError("Conversation not found")
         
@@ -76,27 +76,74 @@ class ChatService:
         if not is_participant:
             raise ValueError("Not authorized to view this conversation")
         
-        messages = Message.objects(conversation_id=conversation_id).order_by('-created_at')
+        # Get total count efficiently (before pagination)
+        total = Message.objects(conversation_id=conversation_id).count()
         
-        total = messages.count()
+        # Get messages ordered by created_at ascending (oldest first) with pagination
         skip = (page - 1) * limit
-        messages = messages.skip(skip).limit(limit)
+        messages = Message.objects(conversation_id=conversation_id).order_by('created_at').skip(skip).limit(limit)
         
+        # Batch load all required data upfront to avoid N+1 queries
+        # Collect all unique IDs
+        sender_ids = set()
+        offer_ids = set()
+        product_ids = set()
+        message_list = list(messages)
+        
+        for msg in message_list:
+            if msg.sender_id:
+                sender_ids.add(msg.sender_id.id)
+            if msg.offer_id:
+                offer_ids.add(msg.offer_id.id)
+            if msg.product_id:
+                product_ids.add(msg.product_id.id)
+        
+        # Batch load users
+        users_dict = {}
+        if sender_ids:
+            users = User.objects(id__in=list(sender_ids)).only('id', 'full_name')
+            users_dict = {str(user.id): user for user in users}
+        
+        # Batch load offers
+        offers_dict = {}
+        offer_product_ids = set()
+        if offer_ids:
+            offers = Offer.objects(id__in=list(offer_ids)).only(
+                'id', 'offer_amount', 'original_price', 'status', 'shipping_cost',
+                'expiration_date', 'counter_offer_amount', 'product_id'
+            )
+            offers_dict = {str(offer.id): offer for offer in offers}
+            # Collect product IDs from offers
+            for offer in offers:
+                if offer.product_id:
+                    offer_product_ids.add(offer.product_id.id)
+        
+        # Batch load products (from messages and offers)
+        products_dict = {}
+        all_product_ids = product_ids | offer_product_ids
+        if all_product_ids:
+            products = Product.objects(id__in=list(all_product_ids)).only(
+                'id', 'title', 'images', 'price', 'original_price', 'currency',
+                'size', 'condition', 'brand', 'category'
+            )
+            products_dict = {str(product.id): product for product in products}
+        
+        # Build messages list with cached data
         messages_list = []
-        for msg in reversed(messages):  # Reverse to show oldest first
-            sender = User.objects(id=msg.sender_id.id).first()
-            is_sender = str(msg.sender_id.id) == str(user_id)
-            
+        for msg in message_list:
             sender_id = str(msg.sender_id.id) if msg.sender_id else None
             receiver_id = str(msg.receiver_id.id) if msg.receiver_id else None
+            is_sender = sender_id == str(user_id)
+            
+            sender = users_dict.get(sender_id) if sender_id else None
             
             message_data = {
                 'id': str(msg.id),
                 'text': msg.text or '',
                 'senderId': sender_id,
                 'receiverId': receiver_id,
-                'isSender': is_sender,  # True if current user sent this message
-                'sender': 'me' if is_sender else 'other',  # For backward compatibility
+                'isSender': is_sender,
+                'sender': 'me' if is_sender else 'other',
                 'senderName': sender.full_name if sender else None,
                 'timestamp': msg.created_at.isoformat(),
                 'attachments': msg.attachments or [],
@@ -107,10 +154,11 @@ class ChatService:
             
             # If message has an offer, include full offer details with product information
             if msg.offer_id:
-                offer = Offer.objects(id=msg.offer_id.id).first()
+                offer_id_str = str(msg.offer_id.id)
+                offer = offers_dict.get(offer_id_str)
                 if offer:
                     offer_data = {
-                        'id': str(offer.id),
+                        'id': offer_id_str,
                         'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
                         'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
                         'status': offer.status,
@@ -122,12 +170,13 @@ class ChatService:
                     if offer.counter_offer_amount:
                         offer_data['counterAmount'] = float(offer.counter_offer_amount)
                     
-                    # Get product details
+                    # Get product details from cached products
                     if offer.product_id:
-                        product = Product.objects(id=offer.product_id.id).first()
+                        product_id_str = str(offer.product_id.id)
+                        product = products_dict.get(product_id_str)
                         if product:
                             offer_data['product'] = {
-                                'id': str(product.id),
+                                'id': product_id_str,
                                 'title': product.title or '',
                                 'image': product.images[0] if product.images and len(product.images) > 0 else None,
                                 'images': product.images or [],
@@ -144,15 +193,18 @@ class ChatService:
             
             messages_list.append(message_data)
         
-        # Mark messages as read
-        Message.objects(conversation_id=conversation_id, receiver_id=user_id, is_read=False).update(set__is_read=True)
-        
-        # Update unread count
-        if str(conversation.participants[0].id) == str(user_id):
-            conversation.unread_count_sender = '0'
-        else:
-            conversation.unread_count_receiver = '0'
-        conversation.save()
+        # Mark messages as read (bulk update - more efficient)
+        # Check if there are unread messages before updating
+        unread_count = Message.objects(conversation_id=conversation_id, receiver_id=user_id, is_read=False).count()
+        if unread_count > 0:
+            Message.objects(conversation_id=conversation_id, receiver_id=user_id, is_read=False).update(set__is_read=True)
+            
+            # Update unread count in conversation
+            if str(conversation.participants[0].id) == str(user_id):
+                conversation.unread_count_sender = '0'
+            else:
+                conversation.unread_count_receiver = '0'
+            conversation.save()
         
         return messages_list, total
     
