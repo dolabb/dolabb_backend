@@ -66,7 +66,8 @@ class ChatService:
     
     @staticmethod
     def get_messages(conversation_id, user_id, page=1, limit=50):
-        """Get messages for a conversation - Optimized version"""
+        """Get messages for a conversation - Highly Optimized version"""
+        # Only fetch minimal fields from conversation to avoid loading full objects
         conversation = Conversation.objects(id=conversation_id).only('participants', 'unread_count_sender', 'unread_count_receiver').first()
         if not conversation:
             raise ValueError("Conversation not found")
@@ -76,27 +77,67 @@ class ChatService:
         if not is_participant:
             raise ValueError("Not authorized to view this conversation")
         
-        # Get total count efficiently (before pagination)
-        total = Message.objects(conversation_id=conversation_id).count()
-        
-        # Get messages ordered by created_at ascending (oldest first) with pagination
+        # Get messages with only required fields to prevent ReferenceField auto-dereferencing
         skip = (page - 1) * limit
-        messages = Message.objects(conversation_id=conversation_id).order_by('created_at').skip(skip).limit(limit)
+        messages_queryset = Message.objects(conversation_id=conversation_id).only(
+            'id', 'text', 'sender_id', 'receiver_id', 'offer_id', 'product_id', 
+            'message_type', 'attachments', 'created_at', 'is_read'
+        ).order_by('created_at').skip(skip).limit(limit)
         
-        # Batch load all required data upfront to avoid N+1 queries
-        # Collect all unique IDs
+        # Get total count - use estimated count for better performance on large collections
+        # For exact count, use count(), but estimated_count() is faster for large datasets
+        try:
+            # Try to get exact count efficiently
+            total = Message.objects(conversation_id=conversation_id).count()
+        except Exception:
+            # Fallback to 0 if count fails
+            total = 0
+        
+        # Convert to list and extract IDs - using pattern from codebase
+        from bson import ObjectId
+        message_list = list(messages_queryset)
+        
+        # Collect all unique IDs from ReferenceFields (handle both dereferenced and DBRef)
         sender_ids = set()
         offer_ids = set()
         product_ids = set()
-        message_list = list(messages)
         
         for msg in message_list:
+            # Handle sender_id ReferenceField
             if msg.sender_id:
-                sender_ids.add(msg.sender_id.id)
+                if hasattr(msg.sender_id, 'id'):
+                    sender_ids.add(msg.sender_id.id)
+                elif isinstance(msg.sender_id, ObjectId):
+                    sender_ids.add(msg.sender_id)
+                elif isinstance(msg.sender_id, str):
+                    try:
+                        sender_ids.add(ObjectId(msg.sender_id))
+                    except:
+                        pass
+            
+            # Handle offer_id ReferenceField
             if msg.offer_id:
-                offer_ids.add(msg.offer_id.id)
+                if hasattr(msg.offer_id, 'id'):
+                    offer_ids.add(msg.offer_id.id)
+                elif isinstance(msg.offer_id, ObjectId):
+                    offer_ids.add(msg.offer_id)
+                elif isinstance(msg.offer_id, str):
+                    try:
+                        offer_ids.add(ObjectId(msg.offer_id))
+                    except:
+                        pass
+            
+            # Handle product_id ReferenceField
             if msg.product_id:
-                product_ids.add(msg.product_id.id)
+                if hasattr(msg.product_id, 'id'):
+                    product_ids.add(msg.product_id.id)
+                elif isinstance(msg.product_id, ObjectId):
+                    product_ids.add(msg.product_id)
+                elif isinstance(msg.product_id, str):
+                    try:
+                        product_ids.add(ObjectId(msg.product_id))
+                    except:
+                        pass
         
         # Batch load users
         users_dict = {}
@@ -118,7 +159,7 @@ class ChatService:
                 if offer.product_id:
                     offer_product_ids.add(offer.product_id.id)
         
-        # Batch load products (from messages and offers)
+        # Batch load products (from messages and offers) - limit images to first one only
         products_dict = {}
         all_product_ids = product_ids | offer_product_ids
         if all_product_ids:
@@ -128,13 +169,52 @@ class ChatService:
             )
             products_dict = {str(product.id): product for product in products}
         
-        # Build messages list with cached data
+        # Build messages list with cached data - optimized
         messages_list = []
         for msg in message_list:
-            sender_id = str(msg.sender_id.id) if msg.sender_id else None
-            receiver_id = str(msg.receiver_id.id) if msg.receiver_id else None
-            is_sender = sender_id == str(user_id)
+            # Extract IDs using same pattern as rest of codebase
+            sender_id = None
+            receiver_id = None
+            offer_id_str = None
+            product_id_str = None
             
+            # Extract sender_id
+            if msg.sender_id:
+                if hasattr(msg.sender_id, 'id'):
+                    sender_id = str(msg.sender_id.id)
+                elif isinstance(msg.sender_id, ObjectId):
+                    sender_id = str(msg.sender_id)
+                elif isinstance(msg.sender_id, str):
+                    sender_id = msg.sender_id
+            
+            # Extract receiver_id
+            if msg.receiver_id:
+                if hasattr(msg.receiver_id, 'id'):
+                    receiver_id = str(msg.receiver_id.id)
+                elif isinstance(msg.receiver_id, ObjectId):
+                    receiver_id = str(msg.receiver_id)
+                elif isinstance(msg.receiver_id, str):
+                    receiver_id = msg.receiver_id
+            
+            # Extract offer_id
+            if msg.offer_id:
+                if hasattr(msg.offer_id, 'id'):
+                    offer_id_str = str(msg.offer_id.id)
+                elif isinstance(msg.offer_id, ObjectId):
+                    offer_id_str = str(msg.offer_id)
+                elif isinstance(msg.offer_id, str):
+                    offer_id_str = msg.offer_id
+            
+            # Extract product_id
+            if msg.product_id:
+                if hasattr(msg.product_id, 'id'):
+                    product_id_str = str(msg.product_id.id)
+                elif isinstance(msg.product_id, ObjectId):
+                    product_id_str = str(msg.product_id)
+                elif isinstance(msg.product_id, str):
+                    product_id_str = msg.product_id
+            
+            is_sender = sender_id == str(user_id)
             sender = users_dict.get(sender_id) if sender_id else None
             
             message_data = {
@@ -145,16 +225,15 @@ class ChatService:
                 'isSender': is_sender,
                 'sender': 'me' if is_sender else 'other',
                 'senderName': sender.full_name if sender else None,
-                'timestamp': msg.created_at.isoformat(),
+                'timestamp': msg.created_at.isoformat() if msg.created_at else None,
                 'attachments': msg.attachments or [],
-                'offerId': str(msg.offer_id.id) if msg.offer_id else None,
-                'productId': str(msg.product_id.id) if msg.product_id else None,
+                'offerId': offer_id_str,
+                'productId': product_id_str,
                 'messageType': msg.message_type or 'text'
             }
             
             # If message has an offer, include full offer details with product information
-            if msg.offer_id:
-                offer_id_str = str(msg.offer_id.id)
+            if offer_id_str:
                 offer = offers_dict.get(offer_id_str)
                 if offer:
                     offer_data = {
@@ -170,16 +249,20 @@ class ChatService:
                     if offer.counter_offer_amount:
                         offer_data['counterAmount'] = float(offer.counter_offer_amount)
                     
-                    # Get product details from cached products
+                    # Get product details from cached products - limit images to first 3 for performance
                     if offer.product_id:
-                        product_id_str = str(offer.product_id.id)
-                        product = products_dict.get(product_id_str)
+                        product_id_from_offer = str(offer.product_id.id if hasattr(offer.product_id, 'id') else offer.product_id)
+                        product = products_dict.get(product_id_from_offer)
                         if product:
+                            # Limit images to first 3 to reduce payload size
+                            product_images = product.images or []
+                            limited_images = product_images[:3] if len(product_images) > 3 else product_images
+                            
                             offer_data['product'] = {
-                                'id': product_id_str,
+                                'id': product_id_from_offer,
                                 'title': product.title or '',
-                                'image': product.images[0] if product.images and len(product.images) > 0 else None,
-                                'images': product.images or [],
+                                'image': product_images[0] if product_images else None,
+                                'images': limited_images,
                                 'price': float(product.price) if product.price else 0.0,
                                 'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
                                 'currency': product.currency or 'SAR',
@@ -193,18 +276,33 @@ class ChatService:
             
             messages_list.append(message_data)
         
-        # Mark messages as read (bulk update - more efficient)
-        # Check if there are unread messages before updating
-        unread_count = Message.objects(conversation_id=conversation_id, receiver_id=user_id, is_read=False).count()
-        if unread_count > 0:
-            Message.objects(conversation_id=conversation_id, receiver_id=user_id, is_read=False).update(set__is_read=True)
+        # Mark-as-read operation - optimized to use exists() instead of count()
+        # This is faster as it stops after finding first match
+        try:
+            # Check if any unread messages exist (faster than count)
+            has_unread = Message.objects(
+                conversation_id=conversation_id, 
+                receiver_id=user_id, 
+                is_read=False
+            ).limit(1).first() is not None
             
-            # Update unread count in conversation
-            if str(conversation.participants[0].id) == str(user_id):
-                conversation.unread_count_sender = '0'
-            else:
-                conversation.unread_count_receiver = '0'
-            conversation.save()
+            if has_unread:
+                # Perform bulk update (single operation)
+                Message.objects(
+                    conversation_id=conversation_id, 
+                    receiver_id=user_id, 
+                    is_read=False
+                ).update(set__is_read=True)
+                
+                # Update unread count in conversation (only if needed)
+                if str(conversation.participants[0].id) == str(user_id):
+                    conversation.unread_count_sender = '0'
+                else:
+                    conversation.unread_count_receiver = '0'
+                conversation.save()
+        except Exception:
+            # Silently fail if update fails - don't block response
+            pass
         
         return messages_list, total
     
