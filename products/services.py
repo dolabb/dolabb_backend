@@ -915,6 +915,80 @@ class OfferService:
         offer.save()
         
         return offer
+    
+    @staticmethod
+    def get_order_summary(offer_id, user_id):
+        """
+        Get order summary for an accepted offer
+        Returns product details, prices, shipping, VAT (15%), and final total
+        """
+        from products.services import OrderService
+        
+        # Get the offer
+        offer = Offer.objects(id=offer_id).first()
+        if not offer:
+            raise ValueError("Offer not found")
+        
+        # Check if offer is accepted
+        if offer.status != 'accepted':
+            raise ValueError("Offer must be accepted to view order summary")
+        
+        # Verify user has access (either buyer or seller)
+        if str(offer.buyer_id.id) != str(user_id) and str(offer.seller_id.id) != str(user_id):
+            raise ValueError("You don't have permission to view this order summary")
+        
+        # Get product details
+        product = Product.objects(id=offer.product_id.id).first()
+        if not product:
+            raise ValueError("Product not found")
+        
+        # Get product image (first image from images array)
+        product_image = product.images[0] if product.images and len(product.images) > 0 else ''
+        
+        # Get prices
+        original_price = float(offer.original_price)
+        # Determine the accepted offer price:
+        # - If counter_offer_amount exists, it means seller made a counter offer (or multiple counter offers)
+        #   and buyer accepted the latest counter offer. Use the counter_offer_amount (latest counter).
+        # - If no counter_offer_amount, it means seller accepted buyer's original offer. Use offer_amount.
+        # Note: If seller sends multiple counter offers, each one overwrites counter_offer_amount,
+        # so the latest counter offer amount is always stored in counter_offer_amount.
+        if offer.counter_offer_amount is not None:
+            offer_price = float(offer.counter_offer_amount)
+        else:
+            offer_price = float(offer.offer_amount)
+        shipping_price = float(offer.shipping_cost)
+        
+        # Calculate platform fee (based on offer price)
+        platform_fee = OrderService.calculate_platform_fee(offer_price)
+        
+        # Calculate subtotal (offer price + shipping + platform fee)
+        subtotal = offer_price + shipping_price + platform_fee
+        
+        # Calculate VAT (15% of subtotal)
+        vat_percentage = 15.0
+        vat_amount = round(subtotal * (vat_percentage / 100.0), 2)
+        
+        # Calculate final total (subtotal + VAT)
+        final_total = round(subtotal + vat_amount, 2)
+        
+        return {
+            'product': {
+                'id': str(product.id),
+                'title': product.title,
+                'image': product_image
+            },
+            'originalPrice': original_price,
+            'offerPrice': offer_price,
+            'shippingPrice': shipping_price,
+            'platformFee': platform_fee,
+            'vat': {
+                'percentage': vat_percentage,
+                'amount': vat_amount
+            },
+            'subtotal': round(subtotal, 2),
+            'finalTotal': final_total
+        }
 
 
 class OrderService:

@@ -194,6 +194,36 @@ def accept_offer(request, offer_id):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+def get_order_summary(request, offer_id):
+    """Get order summary for an accepted offer"""
+    try:
+        user_id = str(request.user.id)
+        summary = OfferService.get_order_summary(offer_id, user_id)
+        
+        return Response({
+            'success': True,
+            'orderSummary': {
+                'productTitle': summary['product']['title'],
+                'productImage': summary['product']['image'],
+                'originalPrice': summary['originalPrice'],
+                'offerPrice': summary['offerPrice'],
+                'shippingPrice': summary['shippingPrice'],
+                'platformFee': summary['platformFee'],
+                'platformTax': {
+                    'label': 'Tax (VAT 15%)',
+                    'percentage': summary['vat']['percentage'],
+                    'amount': summary['vat']['amount']
+                },
+                'finalTotal': summary['finalTotal']
+            }
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['PUT'])
 def reject_offer(request, offer_id):
     """Reject offer"""
