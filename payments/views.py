@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from payments.services import MoyasarPaymentService
 from products.services import OrderService
-from products.models import Order
+from products.models import Order, Product
 
 
 @api_view(['POST'])
@@ -411,4 +411,159 @@ def verify_payment(request):
     except Exception as e:
         logger.error(f"Verify payment error: {str(e)}", exc_info=True)
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+def payment_success(request):
+    """
+    Get payment success/failure details with product information
+    Accepts order_id or payment_id (moyasar_payment_id) as parameter
+    """
+    from payments.models import Payment
+    
+    try:
+        # Get order_id or payment_id from query params (GET) or body (POST)
+        order_id = request.GET.get('orderId') or request.data.get('orderId') or request.GET.get('order_id') or request.data.get('order_id')
+        payment_id = request.GET.get('paymentId') or request.data.get('paymentId') or request.GET.get('payment_id') or request.data.get('payment_id')
+        moyasar_payment_id = request.GET.get('moyasarPaymentId') or request.data.get('moyasarPaymentId') or request.GET.get('moyasar_payment_id') or request.data.get('moyasar_payment_id')
+        
+        payment = None
+        order = None
+        
+        # Find payment by moyasar_payment_id first
+        if moyasar_payment_id:
+            payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
+            if payment:
+                order = payment.order_id
+        
+        # If not found, try payment_id (local payment ID)
+        if not payment and payment_id:
+            payment = Payment.objects(id=payment_id).first()
+            if payment:
+                order = payment.order_id
+        
+        # If not found, try order_id
+        if not order and order_id:
+            order = Order.objects(id=order_id).first()
+            if order:
+                # Find payment for this order
+                if order.payment_id:
+                    payment = Payment.objects(moyasar_payment_id=order.payment_id).first()
+                if not payment:
+                    payment = Payment.objects(order_id=order.id).first()
+        
+        if not order:
+            return Response({
+                'success': False,
+                'error': 'Order not found. Please provide orderId, paymentId, or moyasarPaymentId'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get product details
+        product = Product.objects(id=order.product_id.id).first()
+        if not product:
+            return Response({
+                'success': False,
+                'error': 'Product not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get product image (first image from images array)
+        product_image = product.images[0] if product.images and len(product.images) > 0 else ''
+        
+        # Extract error information from Moyasar metadata if payment failed
+        error_message = None
+        error_code = None
+        error_details = None
+        
+        if payment and payment.metadata:
+            moyasar_data = payment.metadata
+            # Moyasar error information is typically in these fields
+            if payment.status == 'failed':
+                error_message = moyasar_data.get('message') or moyasar_data.get('error') or moyasar_data.get('description')
+                error_code = moyasar_data.get('code') or moyasar_data.get('error_code')
+                
+                # Check for transaction errors
+                if 'transaction' in moyasar_data:
+                    transaction = moyasar_data.get('transaction', {})
+                    error_message = transaction.get('message') or error_message
+                    error_code = transaction.get('code') or error_code
+                
+                # Check for source errors (card errors)
+                if 'source' in moyasar_data:
+                    source = moyasar_data.get('source', {})
+                    if 'message' in source:
+                        error_message = source.get('message') or error_message
+                    if 'transaction' in source:
+                        source_transaction = source.get('transaction', {})
+                        error_message = source_transaction.get('message') or error_message
+                        error_code = source_transaction.get('code') or error_code
+                
+                # Get full error details
+                error_details = {
+                    'message': error_message,
+                    'code': error_code,
+                    'status': moyasar_data.get('status'),
+                    'type': moyasar_data.get('type')
+                }
+        
+        # Determine paid amount
+        paid_amount = None
+        if payment:
+            if payment.status == 'completed':
+                paid_amount = float(payment.amount)
+            elif payment.status == 'failed':
+                paid_amount = 0.0
+        else:
+            # If no payment record, check order payment status
+            if order.payment_status == 'completed':
+                paid_amount = float(order.total_price)
+            else:
+                paid_amount = 0.0
+        
+        # Build response
+        response_data = {
+            'success': True,
+            'order': {
+                'id': str(order.id),
+                'orderNumber': order.order_number,
+                'status': order.status,
+                'paymentStatus': order.payment_status
+            },
+            'product': {
+                'id': str(product.id),
+                'title': product.title,
+                'image': product_image,
+                'price': float(product.price),
+                'originalPrice': float(product.original_price) if product.original_price else None
+            },
+            'payment': {
+                'status': payment.status if payment else order.payment_status,
+                'paidAmount': paid_amount,
+                'currency': payment.currency if payment else 'SAR',
+                'moyasarPaymentId': payment.moyasar_payment_id if payment else order.payment_id
+            }
+        }
+        
+        # Add error information if payment failed
+        if (payment and payment.status == 'failed') or (order.payment_status == 'failed'):
+            response_data['error'] = {
+                'hasError': True,
+                'message': error_message or 'Payment processing failed',
+                'code': error_code,
+                'details': error_details
+            }
+        else:
+            response_data['error'] = {
+                'hasError': False
+            }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Payment success API error: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
