@@ -437,27 +437,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         receiver_id = data.get('receiverId')
         text = data.get('text', '')  # Optional message
         
-            # Validate required fields
-            if not offer_id or not receiver_id:
+        # Validate required fields
+        if not offer_id or not receiver_id:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'offerId and receiverId are required',
+                'error': 'MISSING_REQUIRED_FIELDS',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+            }))
+            return
+        
+        try:
+            # Get offer to check status and determine who can accept
+            offer = await self.get_offer_async(offer_id)
+            if not offer:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'offerId and receiverId are required',
-                    'error': 'MISSING_REQUIRED_FIELDS',
+                    'message': 'Offer not found',
+                    'error': 'OFFER_NOT_FOUND',
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
-            
-            try:
-                # Get offer to check status and determine who can accept
-                offer = await self.get_offer_async(offer_id)
-                if not offer:
-                    await self.send(text_data=json.dumps({
-                        'type': 'error',
-                        'message': 'Offer not found',
-                        'error': 'OFFER_NOT_FOUND',
-                        'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                    }))
-                    return
             
             # Determine if user is buyer or seller
             is_buyer = str(offer.buyer_id.id) == user_id
