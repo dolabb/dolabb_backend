@@ -920,14 +920,19 @@ class OfferService:
         counterer_type = 'buyer' if is_buyer else 'seller'
         
         # Check if same person is trying to counter twice in a row
-        if offer.last_countered_by == counterer_type:
+        # Handle case where last_countered_by might not exist in old documents
+        if hasattr(offer, 'last_countered_by') and offer.last_countered_by == counterer_type:
             raise ValueError("You cannot counter your own last counter. Wait for the other party to respond.")
         
         # Check counter limits (max 4 counters per person)
-        if is_buyer and offer.buyer_counter_count >= 4:
+        # Handle case where counter counts might not exist in old documents
+        buyer_count = getattr(offer, 'buyer_counter_count', 0) or 0
+        seller_count = getattr(offer, 'seller_counter_count', 0) or 0
+        
+        if is_buyer and buyer_count >= 4:
             raise ValueError("You have reached the maximum number of counter offers (4). Please accept or reject the current offer.")
         
-        if is_seller and offer.seller_counter_count >= 4:
+        if is_seller and seller_count >= 4:
             raise ValueError("You have reached the maximum number of counter offers (4). Please accept or reject the current offer.")
         
         # Update counter offer
@@ -936,10 +941,11 @@ class OfferService:
         offer.last_countered_by = counterer_type
         
         # Increment counter count
+        # Handle case where counter counts might not exist in old documents
         if is_buyer:
-            offer.buyer_counter_count = (offer.buyer_counter_count or 0) + 1
+            offer.buyer_counter_count = (getattr(offer, 'buyer_counter_count', 0) or 0) + 1
         else:
-            offer.seller_counter_count = (offer.seller_counter_count or 0) + 1
+            offer.seller_counter_count = (getattr(offer, 'seller_counter_count', 0) or 0) + 1
         
         offer.updated_at = datetime.utcnow()
         offer.save()
