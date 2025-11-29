@@ -246,22 +246,19 @@ def reject_offer(request, offer_id):
 
 @api_view(['POST'])
 def counter_offer(request, offer_id):
-    """Counter offer - allows both buyer and seller to counter"""
+    """Counter offer"""
     try:
-        user_id = str(request.user.id)  # Changed from seller_id to user_id
+        seller_id = str(request.user.id)
         counter_amount = float(request.data.get('counterAmount'))
         
-        offer = OfferService.counter_offer(offer_id, user_id, counter_amount)
+        offer = OfferService.counter_offer(offer_id, seller_id, counter_amount)
         
         return Response({
             'success': True,
             'offer': {
                 'id': str(offer.id),
                 'status': offer.status,
-                'counterOfferAmount': offer.counter_offer_amount,
-                'sellerCounterCount': offer.seller_counter_count or 0,
-                'buyerCounterCount': offer.buyer_counter_count or 0,
-                'lastCounterBy': offer.last_counter_by
+                'counterOfferAmount': offer.counter_offer_amount
             }
         }, status=status.HTTP_200_OK)
     except ValueError as e:
@@ -277,7 +274,14 @@ def get_accepted_offers(request):
         seller_id = str(request.user.id)
         
         # Get all accepted and paid offers for this seller
-        offers = Offer.objects(seller_id=seller_id, status__in=['accepted', 'paid']).order_by('-created_at')
+        # Exclude new optional fields to avoid validation errors on old documents
+        fields_to_load = [
+            'id', 'product_id', 'buyer_id', 'buyer_name', 'seller_id', 'seller_name',
+            'offer_amount', 'original_price', 'shipping_cost', 'shipping_address',
+            'zip_code', 'house_number', 'status', 'expiration_date', 'counter_offer_amount',
+            'created_at', 'updated_at'
+        ]
+        offers = Offer.objects(seller_id=seller_id, status__in=['accepted', 'paid']).only(*fields_to_load).order_by('-created_at')
         
         offers_list = []
         for offer in offers:
@@ -368,7 +372,14 @@ def get_accepted_offer_detail(request, offer_id):
         seller_id = str(request.user.id)
         
         # Get the offer (accepted or paid)
-        offer = Offer.objects(id=offer_id, seller_id=seller_id, status__in=['accepted', 'paid']).first()
+        # Exclude new optional fields to avoid validation errors on old documents
+        fields_to_load = [
+            'id', 'product_id', 'buyer_id', 'buyer_name', 'seller_id', 'seller_name',
+            'offer_amount', 'original_price', 'shipping_cost', 'shipping_address',
+            'zip_code', 'house_number', 'status', 'expiration_date', 'counter_offer_amount',
+            'created_at', 'updated_at'
+        ]
+        offer = Offer.objects(id=offer_id, seller_id=seller_id, status__in=['accepted', 'paid']).only(*fields_to_load).first()
         if not offer:
             return Response({
                 'success': False,
@@ -465,7 +476,14 @@ def upload_shipment_proof(request, offer_id):
         seller_id = str(request.user.id)
         
         # Get the offer (accepted or paid)
-        offer = Offer.objects(id=offer_id, seller_id=seller_id, status__in=['accepted', 'paid']).first()
+        # Exclude new optional fields to avoid validation errors on old documents
+        fields_to_load = [
+            'id', 'product_id', 'buyer_id', 'buyer_name', 'seller_id', 'seller_name',
+            'offer_amount', 'original_price', 'shipping_cost', 'shipping_address',
+            'zip_code', 'house_number', 'status', 'expiration_date', 'counter_offer_amount',
+            'created_at', 'updated_at'
+        ]
+        offer = Offer.objects(id=offer_id, seller_id=seller_id, status__in=['accepted', 'paid']).only(*fields_to_load).first()
         if not offer:
             return Response({
                 'success': False,

@@ -869,10 +869,19 @@ class OfferService:
     @staticmethod
     def get_offers(user_id, user_type='buyer'):
         """Get offers for user"""
+        # Exclude new optional fields to avoid validation errors on old documents
+        # Only load fields that exist in all documents
+        fields_to_load = [
+            'id', 'product_id', 'buyer_id', 'buyer_name', 'seller_id', 'seller_name',
+            'offer_amount', 'original_price', 'shipping_cost', 'shipping_address',
+            'zip_code', 'house_number', 'status', 'expiration_date', 'counter_offer_amount',
+            'created_at', 'updated_at'
+        ]
+        
         if user_type == 'buyer':
-            offers = Offer.objects(buyer_id=user_id).order_by('-created_at')
+            offers = Offer.objects(buyer_id=user_id).only(*fields_to_load).order_by('-created_at')
         else:
-            offers = Offer.objects(seller_id=user_id).order_by('-created_at')
+            offers = Offer.objects(seller_id=user_id).only(*fields_to_load).order_by('-created_at')
         
         return offers
     
