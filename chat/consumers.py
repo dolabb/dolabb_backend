@@ -208,7 +208,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
     
     async def send_current_online_users(self):
-        """Send current online users list to the connected user"""
+        """Send current online users list to the connected user with user details"""
         if not hasattr(self, 'conversation_id'):
             return
         
@@ -218,12 +218,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if conversation_id in online_users:
             online_user_ids = list(online_users[conversation_id].keys())
         
+        # Get user details for online users
+        online_users_details = await self.get_users_details(online_user_ids)
+        
         # Get conversation participants
         participants = await self.get_conversation_participants(conversation_id)
         
         await self.send(text_data=json.dumps({
             'type': 'online_users',
-            'onlineUsers': online_user_ids,
+            'onlineUsers': online_user_ids,  # Keep IDs for backward compatibility
+            'onlineUsersDetails': online_users_details,  # New: includes username and profile_image
             'participants': participants
         }))
     
@@ -237,6 +241,45 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return []
         except Exception as e:
             logger.error(f"Error getting conversation participants: {str(e)}")
+            return []
+    
+    @database_sync_to_async
+    def get_users_details(self, user_ids):
+        """Get user details (username and profile_image) for given user IDs"""
+        if not user_ids:
+            return []
+        
+        try:
+            from bson import ObjectId
+            # Convert string IDs to ObjectId
+            object_ids = []
+            for user_id in user_ids:
+                try:
+                    if isinstance(user_id, str):
+                        object_ids.append(ObjectId(user_id))
+                    else:
+                        object_ids.append(user_id)
+                except Exception:
+                    continue
+            
+            if not object_ids:
+                return []
+            
+            # Batch load users with only required fields
+            users = User.objects(id__in=object_ids).only('id', 'username', 'profile_image')
+            
+            # Build user details list
+            users_details = []
+            for user in users:
+                users_details.append({
+                    'id': str(user.id),
+                    'username': user.username or '',
+                    'profileImage': user.profile_image or ''
+                })
+            
+            return users_details
+        except Exception as e:
+            logger.error(f"Error getting users details: {str(e)}", exc_info=True)
             return []
     
     async def receive(self, text_data):
@@ -717,11 +760,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if conversation_id in online_users:
             online_user_ids = list(online_users[conversation_id].keys())
         
+        # Get user details for the user who changed status
+        user_details = await self.get_users_details([user_id])
+        user_detail = user_details[0] if user_details else {
+            'id': user_id,
+            'username': '',
+            'profileImage': ''
+        }
+        
+        # Get user details for all online users
+        online_users_details = await self.get_users_details(online_user_ids)
+        
         await self.send(text_data=json.dumps({
             'type': 'user_status',
             'user_id': user_id,
             'status': status,  # 'online' or 'offline'
-            'onlineUsers': online_user_ids,  # List of currently online user IDs
+            'user': user_detail,  # New: includes username and profile_image for the user who changed status
+            'onlineUsers': online_user_ids,  # Keep IDs for backward compatibility
+            'onlineUsersDetails': online_users_details,  # New: includes username and profile_image for all online users
             'participants': participants
         }))
     
