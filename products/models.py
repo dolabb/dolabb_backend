@@ -80,6 +80,9 @@ class Offer(Document):
     status = StringField(choices=['pending', 'accepted', 'rejected', 'countered', 'expired', 'paid'], default='pending')
     expiration_date = DateTimeField()
     counter_offer_amount = FloatField()
+    seller_counter_count = IntField(default=0)  # Track number of times seller has countered
+    buyer_counter_count = IntField(default=0)  # Track number of times buyer has countered
+    last_counter_by = StringField(choices=['buyer', 'seller'])  # Track who made the last counter
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     

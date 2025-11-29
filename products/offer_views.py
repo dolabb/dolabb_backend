@@ -246,19 +246,22 @@ def reject_offer(request, offer_id):
 
 @api_view(['POST'])
 def counter_offer(request, offer_id):
-    """Counter offer"""
+    """Counter offer - allows both buyer and seller to counter"""
     try:
-        seller_id = str(request.user.id)
+        user_id = str(request.user.id)  # Changed from seller_id to user_id
         counter_amount = float(request.data.get('counterAmount'))
         
-        offer = OfferService.counter_offer(offer_id, seller_id, counter_amount)
+        offer = OfferService.counter_offer(offer_id, user_id, counter_amount)
         
         return Response({
             'success': True,
             'offer': {
                 'id': str(offer.id),
                 'status': offer.status,
-                'counterOfferAmount': offer.counter_offer_amount
+                'counterOfferAmount': offer.counter_offer_amount,
+                'sellerCounterCount': offer.seller_counter_count or 0,
+                'buyerCounterCount': offer.buyer_counter_count or 0,
+                'lastCounterBy': offer.last_counter_by
             }
         }, status=status.HTTP_200_OK)
     except ValueError as e:

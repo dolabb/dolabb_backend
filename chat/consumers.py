@@ -424,10 +424,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
     
     async def handle_counter_offer(self, data):
-        """Handle counter offer via WebSocket"""
+        """Handle counter offer via WebSocket - allows both buyer and seller to counter"""
         from products.services import OfferService
         
-        seller_id = str(self.user.id)
+        user_id = str(self.user.id)  # Changed from seller_id to user_id to support both
         offer_id = data.get('offerId')
         counter_amount = data.get('counterAmount')
         receiver_id = data.get('receiverId')
@@ -437,21 +437,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not offer_id or not counter_amount or not receiver_id:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'offerId, counterAmount, and receiverId are required'
+                'message': 'offerId, counterAmount, and receiverId are required',
+                'error': 'MISSING_REQUIRED_FIELDS',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
             return
         
         try:
-            # Counter the offer
-            offer = await self.counter_offer_async(offer_id, seller_id, float(counter_amount))
+            # Get offer first to determine if user is buyer or seller
+            offer = await self.get_offer_async(offer_id)
+            if not offer:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Offer not found',
+                    'error': 'OFFER_NOT_FOUND',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+                }))
+                return
             
-            # Save message with counter offer
+            # Determine if user is buyer or seller
+            is_buyer = str(offer.buyer_id.id) == user_id
+            is_seller = str(offer.seller_id.id) == user_id
+            
+            if not is_buyer and not is_seller:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'You are not authorized to counter this offer',
+                    'error': 'UNAUTHORIZED_ACTION',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+                }))
+                return
+            
+            # Counter the offer (now accepts both buyer and seller)
+            offer = await self.counter_offer_async(offer_id, user_id, float(counter_amount))
+            
+            # Save message with counter offer (use user_id as sender, not seller_id)
             message = await self.save_message(
-                seller_id, receiver_id,
+                user_id, receiver_id,
                 text or f"Countered with ${counter_amount}",
                 str(offer.product_id.id) if offer.product_id else None,
                 [], str(offer.id)
             )
+            
+            # Get complete message data with all fields (use user_id, not seller_id)
+            message_data = await self.get_message_data(message, user_id)
             
             # Get offer details with product information and counter offer
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
@@ -829,10 +858,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return OfferService.create_offer(buyer_id, product_id, offer_amount, shipping_address, zip_code, house_number)
     
     @database_sync_to_async
-    def counter_offer_async(self, offer_id, seller_id, counter_amount):
-        """Counter offer asynchronously"""
+    def counter_offer_async(self, offer_id, user_id, counter_amount):
+        """Counter offer asynchronously - accepts both buyer and seller"""
         from products.services import OfferService
-        return OfferService.counter_offer(offer_id, seller_id, counter_amount)
+        return OfferService.counter_offer(offer_id, user_id, counter_amount)
     
     @database_sync_to_async
     def accept_offer_async(self, offer_id, seller_id):

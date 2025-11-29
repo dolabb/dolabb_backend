@@ -903,15 +903,68 @@ class OfferService:
         return offer
     
     @staticmethod
-    def counter_offer(offer_id, seller_id, counter_amount):
-        """Counter offer"""
-        offer = Offer.objects(id=offer_id, seller_id=seller_id).first()
+    def counter_offer(offer_id, user_id, counter_amount):
+        """Counter offer - allows both buyer and seller to counter
+        
+        Rules:
+        - Seller can counter buyer's initial offer (status: pending)
+        - Buyer can counter seller's counter offer (status: countered)
+        - Maximum 4 counters per side (8 total counters)
+        - Cannot counter your own last counter
+        """
+        offer = Offer.objects(id=offer_id).first()
         if not offer:
             raise ValueError("Offer not found")
         
+        # Determine if user is buyer or seller
+        is_buyer = str(offer.buyer_id.id) == str(user_id)
+        is_seller = str(offer.seller_id.id) == str(user_id)
+        
+        if not is_buyer and not is_seller:
+            raise ValueError("You are not authorized to counter this offer")
+        
+        # Validate who can counter based on offer status
+        if offer.status == 'pending':
+            if not is_seller:
+                raise ValueError("Only seller can counter a pending offer")
+            # Check if seller has reached counter limit
+            if offer.seller_counter_count >= 4:
+                raise ValueError("Maximum counter limit reached. You have already countered 4 times.")
+        elif offer.status == 'countered':
+            if is_buyer:
+                # Buyer countering seller's counter
+                if offer.last_counter_by == 'buyer':
+                    raise ValueError("You cannot counter your own last counter. Wait for the other party to respond.")
+                if offer.buyer_counter_count >= 4:
+                    raise ValueError("Maximum counter limit reached. You have already countered 4 times.")
+            elif is_seller:
+                # Seller countering buyer's counter
+                if offer.last_counter_by == 'seller':
+                    raise ValueError("You cannot counter your own last counter. Wait for the other party to respond.")
+                if offer.seller_counter_count >= 4:
+                    raise ValueError("Maximum counter limit reached. You have already countered 4 times.")
+            else:
+                raise ValueError("Invalid user type for countering")
+        else:
+            raise ValueError(f"Cannot counter offer with status: {offer.status}")
+        
+        # Validate counter amount
+        if counter_amount <= 0:
+            raise ValueError("Counter amount must be greater than 0")
+        
+        # Update counter offer amount
         offer.counter_offer_amount = float(counter_amount)
         offer.status = 'countered'
         offer.updated_at = datetime.utcnow()
+        
+        # Track counter counts and last counter by
+        if is_seller:
+            offer.seller_counter_count = (offer.seller_counter_count or 0) + 1
+            offer.last_counter_by = 'seller'
+        elif is_buyer:
+            offer.buyer_counter_count = (offer.buyer_counter_count or 0) + 1
+            offer.last_counter_by = 'buyer'
+        
         offer.save()
         
         return offer
