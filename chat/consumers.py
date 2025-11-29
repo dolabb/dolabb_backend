@@ -258,12 +258,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             else:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': f'Unknown message type: {message_type}'
+                    'message': f'Unknown message type: {message_type}',
+                    'error': 'UNKNOWN_MESSAGE_TYPE',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'Invalid JSON format'
+                'message': 'Invalid JSON format',
+                'error': 'INVALID_JSON',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
         except Exception as e:
             logger.error(f"Error processing WebSocket message: {str(e)}", exc_info=True)
@@ -285,7 +289,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not receiver_id:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'receiverId is required'
+                'message': 'receiverId is required',
+                'error': 'MISSING_RECEIVER_ID',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
             return
         
@@ -321,7 +327,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not product_id or not offer_amount or not receiver_id:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'productId, offerAmount, and receiverId are required'
+                'message': 'productId, offerAmount, and receiverId are required',
+                'error': 'MISSING_REQUIRED_FIELDS',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
             return
         
@@ -341,25 +349,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 product_id, [], str(offer.id)
             )
             
+            # Get complete message data with all fields
+            message_data = await self.get_message_data(message, buyer_id)
+            
             # Broadcast offer to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'offer_sent',
                     'offer': offer_data,
-                    'message': {
-                        'id': str(message.id),
-                        'text': message.text,
-                        'timestamp': message.created_at.isoformat(),
-                        'conversationId': message.conversation_id
-                    },
+                    'message': message_data,
                     'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': str(e),
+                'error': 'OFFER_CREATION_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
     
     async def handle_counter_offer(self, data):
@@ -395,25 +403,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Get offer details with product information and counter offer
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
             
+            # Get complete message data with all fields
+            message_data = await self.get_message_data(message, seller_id)
+            
             # Broadcast counter offer to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'offer_countered',
                     'offer': offer_data,
-                    'message': {
-                        'id': str(message.id),
-                        'text': message.text,
-                        'timestamp': message.created_at.isoformat(),
-                        'conversationId': message.conversation_id
-                    },
+                    'message': message_data,
                     'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': str(e),
+                'error': 'COUNTER_OFFER_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
     
     async def handle_accept_offer(self, data):
@@ -429,23 +437,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         receiver_id = data.get('receiverId')
         text = data.get('text', '')  # Optional message
         
-        # Validate required fields
-        if not offer_id or not receiver_id:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'offerId and receiverId are required'
-            }))
-            return
-        
-        try:
-            # Get offer to check status and determine who can accept
-            offer = await self.get_offer_async(offer_id)
-            if not offer:
+            # Validate required fields
+            if not offer_id or not receiver_id:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Offer not found'
+                    'message': 'offerId and receiverId are required',
+                    'error': 'MISSING_REQUIRED_FIELDS',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
+            
+            try:
+                # Get offer to check status and determine who can accept
+                offer = await self.get_offer_async(offer_id)
+                if not offer:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': 'Offer not found',
+                        'error': 'OFFER_NOT_FOUND',
+                        'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+                    }))
+                    return
             
             # Determine if user is buyer or seller
             is_buyer = str(offer.buyer_id.id) == user_id
@@ -455,19 +467,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if offer.status == 'pending' and not is_seller:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Only seller can accept a pending offer'
+                    'message': 'Only seller can accept a pending offer',
+                    'error': 'UNAUTHORIZED_ACTION',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
             elif offer.status == 'countered' and not is_buyer:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Only buyer can accept a counter offer'
+                    'message': 'Only buyer can accept a counter offer',
+                    'error': 'UNAUTHORIZED_ACTION',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
             elif offer.status not in ['pending', 'countered']:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': f'Cannot accept offer with status: {offer.status}'
+                    'message': f'Cannot accept offer with status: {offer.status}',
+                    'error': 'INVALID_OFFER_STATUS',
+                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
             
@@ -479,6 +497,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Buyer accepting seller's counter offer
                 offer = await self.accept_counter_offer_async(offer_id, user_id)
             
+            # Get complete offer details with product information
+            offer_data = await self.get_offer_details_async(offer, include_counter=True)
+            
             # Save message
             message = await self.save_message(
                 user_id, receiver_id,
@@ -487,29 +508,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 [], str(offer.id)
             )
             
+            # Get complete message data with all fields
+            message_data = await self.get_message_data(message, user_id)
+            
             # Broadcast offer acceptance to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'offer_accepted',
-                    'offer': {
-                        'id': str(offer.id),
-                        'status': offer.status,
-                        'updatedAt': offer.updated_at.isoformat()
-                    },
-                    'message': {
-                        'id': str(message.id),
-                        'text': message.text,
-                        'timestamp': message.created_at.isoformat(),
-                        'conversationId': message.conversation_id
-                    },
+                    'offer': offer_data,
+                    'message': message_data,
                     'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': str(e),
+                'error': 'REJECT_OFFER_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
     
     async def handle_reject_offer(self, data):
@@ -525,13 +542,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not offer_id or not receiver_id:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'offerId and receiverId are required'
+                'message': 'offerId and receiverId are required',
+                'error': 'MISSING_REQUIRED_FIELDS',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
             return
         
         try:
             # Reject the offer
             offer = await self.reject_offer_async(offer_id, seller_id)
+            
+            # Get complete offer details with product information
+            offer_data = await self.get_offer_details_async(offer, include_counter=True)
             
             # Save message
             message = await self.save_message(
@@ -541,29 +563,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 [], str(offer.id)
             )
             
+            # Get complete message data with all fields
+            message_data = await self.get_message_data(message, seller_id)
+            
             # Broadcast offer rejection to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'offer_rejected',
-                    'offer': {
-                        'id': str(offer.id),
-                        'status': offer.status,
-                        'updatedAt': offer.updated_at.isoformat()
-                    },
-                    'message': {
-                        'id': str(message.id),
-                        'text': message.text,
-                        'timestamp': message.created_at.isoformat(),
-                        'conversationId': message.conversation_id
-                    },
+                    'offer': offer_data,
+                    'message': message_data,
                     'conversationId': message.conversation_id
                 }
             )
         except ValueError as e:
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': str(e),
+                'error': 'REJECT_OFFER_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
     
     @database_sync_to_async
@@ -578,6 +596,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if message.sender_id:
             sender = User.objects(id=message.sender_id.id).first()
         
+        # Ensure timestamp is in ISO format
+        timestamp = message.created_at.isoformat() if message.created_at else datetime.utcnow().isoformat()
+        
         message_data = {
             'id': str(message.id),
             'text': message.text or '',
@@ -587,41 +608,64 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'isSender': is_sender,  # True if current user sent this message
             'sender': 'me' if is_sender else 'other',  # For backward compatibility
             'senderName': sender.full_name if sender else None,
-            'timestamp': message.created_at.isoformat(),
+            'timestamp': timestamp,
+            'createdAt': timestamp,  # Include createdAt for consistency
             'attachments': message.attachments or [],
             'offerId': str(message.offer_id.id) if message.offer_id else None,
             'productId': str(message.product_id.id) if message.product_id else None,
-            'messageType': message.message_type or 'text'
+            'messageType': message.message_type or 'text',
+            'isRead': message.is_read if hasattr(message, 'is_read') else False
         }
         
-        # If message has an offer, include offer details with product information
+        # If message has an offer, include complete offer details with product information
         if message.offer_id:
-            from products.models import Offer
+            from products.models import Offer, Product
             offer = Offer.objects(id=message.offer_id.id).first()
             if offer:
                 offer_data = {
                     'id': str(offer.id),
+                    'productId': str(offer.product_id.id) if offer.product_id else None,
+                    'buyerId': str(offer.buyer_id.id) if offer.buyer_id else None,
+                    'sellerId': str(offer.seller_id.id) if offer.seller_id else None,
                     'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
                     'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
                     'status': offer.status,
-                    'counterAmount': float(offer.counter_offer_amount) if offer.counter_offer_amount else None,
+                    'createdAt': offer.created_at.isoformat() if offer.created_at else None,
+                    'updatedAt': offer.updated_at.isoformat() if offer.updated_at else None,
                 }
                 
-                # Get product details
+                # Include counter offer if it exists
+                if offer.counter_offer_amount:
+                    offer_data['counterAmount'] = float(offer.counter_offer_amount)
+                
+                # Include shipping cost if available
+                if hasattr(offer, 'shipping_cost') and offer.shipping_cost:
+                    offer_data['shippingCost'] = float(offer.shipping_cost)
+                
+                # Include expiration date if available
+                if hasattr(offer, 'expiration_date') and offer.expiration_date:
+                    offer_data['expirationDate'] = offer.expiration_date.isoformat()
+                
+                # Get complete product details
                 if offer.product_id:
-                    from products.models import Product
                     product = Product.objects(id=offer.product_id.id).first()
                     if product:
+                        product_images = product.images or []
+                        # Use first image as main image, or fallback to image field
+                        main_image = product_images[0] if product_images else (product.image if hasattr(product, 'image') else None)
+                        
                         offer_data['product'] = {
                             'id': str(product.id),
                             'title': product.title or '',
-                            'image': product.images[0] if product.images and len(product.images) > 0 else None,
-                            'images': product.images or [],
+                            'image': main_image,
+                            'images': product_images,
                             'price': float(product.price) if product.price else 0.0,
                             'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
                             'currency': product.currency or 'SAR',
                             'size': product.size or '',
                             'condition': product.condition or '',
+                            'brand': product.brand or '' if hasattr(product, 'brand') else '',
+                            'category': product.category or '' if hasattr(product, 'category') else '',
                         }
                 
                 message_data['offer'] = offer_data
@@ -741,7 +785,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def get_offer_details_async(self, offer, include_counter=False):
-        """Get offer details with product information"""
+        """Get complete offer details with product information"""
         from products.models import Product
         
         offer_data = {
@@ -756,24 +800,38 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'updatedAt': offer.updated_at.isoformat() if offer.updated_at else None,
         }
         
-        # Include counter offer if requested and exists
-        if include_counter and offer.counter_offer_amount:
+        # Include counter offer if it exists (always include if requested, or if offer has counter)
+        if offer.counter_offer_amount:
             offer_data['counterAmount'] = float(offer.counter_offer_amount)
         
-        # Get product details
+        # Include shipping cost if available
+        if hasattr(offer, 'shipping_cost') and offer.shipping_cost:
+            offer_data['shippingCost'] = float(offer.shipping_cost)
+        
+        # Include expiration date if available
+        if hasattr(offer, 'expiration_date') and offer.expiration_date:
+            offer_data['expirationDate'] = offer.expiration_date.isoformat()
+        
+        # Get complete product details
         if offer.product_id:
             product = Product.objects(id=offer.product_id.id).first()
             if product:
+                product_images = product.images or []
+                # Use first image as main image, or fallback to image field
+                main_image = product_images[0] if product_images else (product.image if hasattr(product, 'image') else None)
+                
                 offer_data['product'] = {
                     'id': str(product.id),
                     'title': product.title or '',
-                    'image': product.images[0] if product.images and len(product.images) > 0 else None,
-                    'images': product.images or [],
+                    'image': main_image,
+                    'images': product_images,
                     'price': float(product.price) if product.price else 0.0,
                     'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
                     'currency': product.currency or 'SAR',
                     'size': product.size or '',
                     'condition': product.condition or '',
+                    'brand': product.brand or '' if hasattr(product, 'brand') else '',
+                    'category': product.category or '' if hasattr(product, 'category') else '',
                 }
         
         return offer_data
