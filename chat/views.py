@@ -25,20 +25,35 @@ def get_conversations(request):
 
 @api_view(['GET'])
 def get_messages(request, conversation_id):
-    """Get messages for a conversation"""
+    """Get messages for a conversation with pagination
+    
+    Messages are ordered by createdAt in descending order (newest first).
+    Page 1 contains the most recent messages.
+    """
     try:
         user_id = str(request.user.id)
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 50))
         
+        # Ensure page is at least 1
+        if page < 1:
+            page = 1
+        
         messages, total = ChatService.get_messages(conversation_id, user_id, page, limit)
+        
+        # Calculate total pages (handle empty conversations)
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        # If page exceeds total pages, return empty array but with correct pagination metadata
+        if page > total_pages and total_pages > 0:
+            messages = []
         
         return Response({
             'success': True,
             'messages': messages,
             'pagination': {
                 'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
+                'totalPages': total_pages,
                 'totalItems': total
             }
         }, status=status.HTTP_200_OK)

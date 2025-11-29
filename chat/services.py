@@ -78,11 +78,12 @@ class ChatService:
             raise ValueError("Not authorized to view this conversation")
         
         # Get messages with only required fields to prevent ReferenceField auto-dereferencing
+        # Order by created_at DESC (newest first) - Page 1 = most recent messages
         skip = (page - 1) * limit
         messages_queryset = Message.objects(conversation_id=conversation_id).only(
             'id', 'text', 'sender_id', 'receiver_id', 'offer_id', 'product_id', 
             'message_type', 'attachments', 'created_at', 'is_read'
-        ).order_by('created_at').skip(skip).limit(limit)
+        ).order_by('-created_at').skip(skip).limit(limit)
         
         # Get total count - use estimated count for better performance on large collections
         # For exact count, use count(), but estimated_count() is faster for large datasets
@@ -217,6 +218,9 @@ class ChatService:
             is_sender = sender_id == str(user_id)
             sender = users_dict.get(sender_id) if sender_id else None
             
+            # Ensure timestamp is in ISO format
+            timestamp = msg.created_at.isoformat() if msg.created_at else None
+            
             message_data = {
                 'id': str(msg.id),
                 'text': msg.text or '',
@@ -225,11 +229,13 @@ class ChatService:
                 'isSender': is_sender,
                 'sender': 'me' if is_sender else 'other',
                 'senderName': sender.full_name if sender else None,
-                'timestamp': msg.created_at.isoformat() if msg.created_at else None,
+                'timestamp': timestamp,
+                'createdAt': timestamp,  # Include createdAt for consistency with requirements
                 'attachments': msg.attachments or [],
                 'offerId': offer_id_str,
                 'productId': product_id_str,
-                'messageType': msg.message_type or 'text'
+                'messageType': msg.message_type or 'text',
+                'isRead': msg.is_read if hasattr(msg, 'is_read') else False
             }
             
             # If message has an offer, include full offer details with product information
