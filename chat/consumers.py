@@ -23,6 +23,19 @@ online_users = {}
 class ChatConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for chat"""
     
+    async def safe_channel_layer_operation(self, operation, *args, **kwargs):
+        """Safely execute channel layer operations with error handling"""
+        if not self.channel_layer:
+            logger.warning("Channel layer not available - skipping operation")
+            return False
+        
+        try:
+            await operation(*args, **kwargs)
+            return True
+        except Exception as e:
+            logger.error(f"Channel layer operation failed: {str(e)}", exc_info=True)
+            return False
+    
     async def connect(self):
         try:
             # Get token from query parameters
@@ -66,16 +79,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
             
             # Join room group
-            try:
-                await self.channel_layer.group_add(
-                    self.room_group_name,
-                    self.channel_name
-                )
-            except Exception as e:
-                logger.error(f"Failed to join channel layer group: {str(e)}", exc_info=True)
-                # Still accept connection even if Redis fails
-                # Messages won't be broadcasted but direct messages will work
-                logger.warning("Continuing without channel layer group (Redis may be unavailable)")
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_add,
+                self.room_group_name,
+                self.channel_name
+            )
             
             await self.accept()
             
@@ -130,13 +138,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.mark_user_offline()
         
         # Leave room group
-        try:
-            await self.channel_layer.group_discard(
-                self.room_group_name,
-                self.channel_name
-            )
-        except Exception as e:
-            logger.error(f"Error leaving room group: {str(e)}")
+        await self.safe_channel_layer_operation(
+            self.channel_layer.group_discard,
+            self.room_group_name,
+            self.channel_name
+        )
     
     async def mark_user_online(self):
         """Mark user as online and broadcast status"""
@@ -159,7 +165,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         participants = await self.get_conversation_participants(conversation_id)
         
         # Broadcast user online status
-        await self.channel_layer.group_send(
+        await self.safe_channel_layer_operation(
+            self.channel_layer.group_send,
             self.room_group_name,
             {
                 'type': 'user_status',
@@ -189,7 +196,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 participants = await self.get_conversation_participants(conversation_id)
                 
                 # Broadcast user offline status
-                await self.channel_layer.group_send(
+                await self.safe_channel_layer_operation(
+                    self.channel_layer.group_send,
                     self.room_group_name,
                     {
                         'type': 'user_status',
@@ -302,7 +310,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_data = await self.get_message_data(message, sender_id)
         
         # Send message to room group
-        await self.channel_layer.group_send(
+        await self.safe_channel_layer_operation(
+            self.channel_layer.group_send,
             self.room_group_name,
             {
                 'type': 'chat_message',
@@ -353,7 +362,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_data = await self.get_message_data(message, buyer_id)
             
             # Broadcast offer to room group
-            await self.channel_layer.group_send(
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_send,
                 self.room_group_name,
                 {
                     'type': 'offer_sent',
@@ -407,7 +417,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_data = await self.get_message_data(message, seller_id)
             
             # Broadcast counter offer to room group
-            await self.channel_layer.group_send(
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_send,
                 self.room_group_name,
                 {
                     'type': 'offer_countered',
@@ -512,7 +523,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_data = await self.get_message_data(message, user_id)
             
             # Broadcast offer acceptance to room group
-            await self.channel_layer.group_send(
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_send,
                 self.room_group_name,
                 {
                     'type': 'offer_accepted',
@@ -567,7 +579,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_data = await self.get_message_data(message, seller_id)
             
             # Broadcast offer rejection to room group
-            await self.channel_layer.group_send(
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_send,
                 self.room_group_name,
                 {
                     'type': 'offer_rejected',
@@ -855,6 +868,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
 class NotificationConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for notifications"""
     
+    async def safe_channel_layer_operation(self, operation, *args, **kwargs):
+        """Safely execute channel layer operations with error handling"""
+        if not self.channel_layer:
+            logger.warning("Channel layer not available - skipping operation")
+            return False
+        
+        try:
+            await operation(*args, **kwargs)
+            return True
+        except Exception as e:
+            logger.error(f"Channel layer operation failed: {str(e)}", exc_info=True)
+            return False
+    
     async def connect(self):
         try:
             # Get token from query parameters
@@ -897,14 +923,11 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                 return
             
             # Join room group
-            try:
-                await self.channel_layer.group_add(
-                    self.room_group_name,
-                    self.channel_name
-                )
-            except Exception as e:
-                logger.error(f"Failed to join channel layer group: {str(e)}", exc_info=True)
-                logger.warning("Continuing without channel layer group (Redis may be unavailable)")
+            await self.safe_channel_layer_operation(
+                self.channel_layer.group_add,
+                self.room_group_name,
+                self.channel_name
+            )
             
             await self.accept()
             logger.info(f"Notification WebSocket connected successfully - user_id: {self.user_id}")
@@ -947,7 +970,8 @@ class NotificationConsumer(AsyncWebsocketConsumer):
     
     async def disconnect(self, close_code):
         # Leave room group
-        await self.channel_layer.group_discard(
+        await self.safe_channel_layer_operation(
+            self.channel_layer.group_discard,
             self.room_group_name,
             self.channel_name
         )
