@@ -427,7 +427,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Handle counter offer via WebSocket - allows both buyer and seller to counter"""
         from products.services import OfferService
         
-        user_id = str(self.user.id)  # Changed from seller_id to user_id to support both
+        user_id = str(self.user.id)
         offer_id = data.get('offerId')
         counter_amount = data.get('counterAmount')
         receiver_id = data.get('receiverId')
@@ -439,18 +439,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'type': 'error',
                 'message': 'offerId, counterAmount, and receiverId are required',
                 'error': 'MISSING_REQUIRED_FIELDS',
+                'offerId': offer_id,
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
             return
         
         try:
-            # Get offer first to determine if user is buyer or seller
+            # Get offer first to determine receiver
             offer = await self.get_offer_async(offer_id)
             if not offer:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Offer not found',
+                    'message': 'Offer not found. It may have been deleted or already processed.',
                     'error': 'OFFER_NOT_FOUND',
+                    'offerId': offer_id,
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
@@ -464,6 +466,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'type': 'error',
                     'message': 'You are not authorized to counter this offer',
                     'error': 'UNAUTHORIZED_ACTION',
+                    'offerId': offer_id,
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
                 }))
                 return
@@ -471,7 +474,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Counter the offer (now accepts both buyer and seller)
             offer = await self.counter_offer_async(offer_id, user_id, float(counter_amount))
             
-            # Save message with counter offer (use user_id as sender, not seller_id)
+            # Save message with counter offer
             message = await self.save_message(
                 user_id, receiver_id,
                 text or f"Countered with ${counter_amount}",
@@ -479,14 +482,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 [], str(offer.id)
             )
             
-            # Get complete message data with all fields (use user_id, not seller_id)
-            message_data = await self.get_message_data(message, user_id)
-            
             # Get offer details with product information and counter offer
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
             
             # Get complete message data with all fields
-            message_data = await self.get_message_data(message, seller_id)
+            message_data = await self.get_message_data(message, user_id)
             
             # Broadcast counter offer to room group
             await self.safe_channel_layer_operation(
@@ -504,6 +504,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'type': 'error',
                 'message': str(e),
                 'error': 'COUNTER_OFFER_ERROR',
+                'offerId': offer_id,
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
             }))
     
