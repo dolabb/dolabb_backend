@@ -9,7 +9,8 @@ from authentication.services import AuthService, JWTService
 from authentication.serializers import (
     AdminSignupSerializer, AdminLoginSerializer, AdminForgotPasswordSerializer, AdminResetPasswordSerializer,
     UserSignupSerializer, UserLoginSerializer, UserForgotPasswordSerializer, UserResetPasswordSerializer,
-    AffiliateSignupSerializer, AffiliateLoginSerializer, UserProfileSerializer, VerifyOTPSerializer,
+    AffiliateSignupSerializer, AffiliateLoginSerializer, AffiliateForgotPasswordSerializer, AffiliateResetPasswordSerializer,
+    UserProfileSerializer, VerifyOTPSerializer,
     ResendOTPSerializer
 )
 from authentication.models import User
@@ -558,6 +559,52 @@ def affiliate_login(request):
         }, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def affiliate_forgot_password(request):
+    """Affiliate forgot password"""
+    serializer = AffiliateForgotPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        otp = AuthService.affiliate_forgot_password(serializer.validated_data['email'])
+        return Response({
+            'success': True,
+            'message': 'Reset OTP sent to email',
+            'otp': otp
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def affiliate_reset_password(request):
+    """Affiliate reset password"""
+    serializer = AffiliateResetPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        affiliate = AuthService.affiliate_reset_password(
+            serializer.validated_data['email'],
+            serializer.validated_data['otp'],
+            serializer.validated_data['new_password'],
+            serializer.validated_data['confirm_password']
+        )
+        return Response({
+            'success': True,
+            'message': 'Password reset successfully'
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -27,6 +27,8 @@ urlpatterns = [
     path('affiliate/signup/', views.affiliate_signup, name='affiliate_signup'),
     path('affiliate/login/', views.affiliate_login, name='affiliate_login'),
     path('affiliate/verify-otp/', affiliate_verify_otp, name='affiliate_verify_otp'),
+    path('affiliate/forget-password/', views.affiliate_forgot_password, name='affiliate_forgot_password'),
+    path('affiliate/reset-password/', views.affiliate_reset_password, name='affiliate_reset_password'),
     
     # Combined OTP Verification (for all user types)
     path('verify-otp-combined/', verify_otp, name='verify_otp_combined'),

@@ -90,6 +90,17 @@ class AffiliateLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class AffiliateForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class AffiliateResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=4)
+    new_password = serializers.CharField(write_only=True, min_length=6)
+    confirm_password = serializers.CharField(write_only=True, min_length=6)
+
+
 class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=4)

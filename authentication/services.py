@@ -501,6 +501,49 @@ class AuthService:
         return affiliate, token
     
     @staticmethod
+    def affiliate_forgot_password(email):
+        """Affiliate forgot password"""
+        affiliate = Affiliate.objects(email=email).first()
+        if not affiliate:
+            raise ValueError("Affiliate not found")
+        
+        # Validate affiliate status
+        if affiliate.status != 'active':
+            raise ValueError("Account is suspended or deactivated. Cannot reset password.")
+        
+        otp_code = affiliate.generate_otp(settings.OTP_EXPIRY_SECONDS)
+        affiliate.save()
+        
+        send_otp_email(email, otp_code, affiliate.full_name)
+        return otp_code
+    
+    @staticmethod
+    def affiliate_reset_password(email, otp, new_password, confirm_password):
+        """Affiliate reset password"""
+        if new_password != confirm_password:
+            raise ValueError("Passwords do not match")
+        
+        affiliate = Affiliate.objects(email=email).first()
+        if not affiliate:
+            raise ValueError("Affiliate not found")
+        
+        # Validate affiliate status
+        if affiliate.status != 'active':
+            raise ValueError("Account is suspended or deactivated. Cannot reset password.")
+        
+        if not affiliate.verify_otp(otp):
+            raise ValueError("Invalid or expired OTP")
+        
+        try:
+            affiliate.set_password(new_password)
+            affiliate.otp = None
+            affiliate.save()
+            return affiliate
+        except Exception as e:
+            # Rollback: password change failed, don't clear OTP
+            raise Exception(f"Failed to reset password: {str(e)}")
+    
+    @staticmethod
     def affiliate_signup(full_name, email, phone, password, country_code, bank_name, account_number, iban=None, account_holder_name=None, profile_image_url=None, request=None):
         """Affiliate signup"""
         if Affiliate.objects(email=email).first():
