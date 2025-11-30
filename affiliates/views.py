@@ -288,6 +288,35 @@ def format_affiliate_response(affiliate, request):
     }
 
 
+@api_view(['GET'])
+def get_my_transactions(request):
+    """Get authenticated affiliate's own transactions (earning breakdown)"""
+    try:
+        affiliate = request.user
+        
+        # Verify user is an affiliate
+        if not affiliate or not hasattr(affiliate, 'affiliate_code'):
+            return Response({'success': False, 'error': 'Unauthorized. Affiliate access required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        affiliate_id = str(affiliate.id)
+        
+        transactions, total = AffiliateService.get_affiliate_transactions(affiliate_id, page, limit)
+        
+        return Response({
+            'success': True,
+            'transactions': transactions,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit,
+                'totalItems': total
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET', 'PUT'])
 def affiliate_profile(request):
     """Get or update affiliate profile (authenticated affiliate only)"""

@@ -15,6 +15,49 @@ Admin endpoints require admin privileges.
 
 ---
 
+## Quick Reference: Affiliate Dashboard Data
+
+**For the affiliate dashboard, use these endpoints:**
+
+### Summary Data (Total Earnings, Pending, Available Balance, Status)
+**Endpoint:** `GET /api/affiliate/profile/`
+
+This endpoint returns:
+- ✅ **Total Earnings** (`totalEarnings`)
+- ✅ **Pending Earnings** (`pendingEarnings`)
+- ✅ **Available Balance** (`availableBalance` - same as pendingEarnings)
+- ✅ **Paid Earnings** (`paidEarnings`)
+- ✅ **Status** (`status` - "active" or "deactivated")
+- ✅ **Commission Rate** (`commission_rate`)
+- ✅ **Code Usage Count** (`codeUsageCount`)
+
+### Earning Breakdown (Detailed Transaction List)
+**Endpoint:** `GET /api/affiliate/transactions/`
+
+This endpoint returns:
+- ✅ **Earning Breakdown** - List of all transactions with:
+  - Transaction ID
+  - Referred User Name
+  - Commission Amount
+  - Date
+  - Status (pending/paid)
+  - Overall stats (totalReferrals, totalEarnings, Total Sales, Commission Rate)
+
+**Example Dashboard Implementation:**
+```javascript
+// Get summary data
+const profile = await axios.get('/api/affiliate/profile/', {
+  headers: { Authorization: `Bearer ${token}` }
+});
+
+// Get earning breakdown
+const transactions = await axios.get('/api/affiliate/transactions/?page=1&limit=20', {
+  headers: { Authorization: `Bearer ${token}` }
+});
+```
+
+---
+
 ## Public Endpoints
 
 ### 1. Validate Affiliate Code
@@ -108,7 +151,60 @@ Get the authenticated affiliate's profile information.
 
 ---
 
-### 3. Update Affiliate Profile
+### 3. Get My Transactions (Earning Breakdown)
+Get the authenticated affiliate's transaction history with earning breakdown.
+
+**Endpoint:** `GET /api/affiliate/transactions/`
+
+**Authentication:** Required (Affiliate)
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+
+**Example:** `GET /api/affiliate/transactions/?page=1&limit=20`
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "transactions": [
+    {
+      "_id": "507f1f77bcf86cd799439013",
+      "affiliateId": "507f1f77bcf86cd799439011",
+      "affiliateName": "John Doe",
+      "stats": {
+        "totalReferrals": 15,
+        "totalEarnings": 1500.50,
+        "Total Sales": 15,
+        "Commission Rate": 25.0
+      },
+      "Transaction ID": "507f1f77bcf86cd799439014",
+      "date": "2024-01-15T10:30:00.000Z",
+      "Referred User Name": "Jane Smith",
+      "Referred User Commission": 100.25,
+      "status": "paid"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 3,
+    "totalItems": 50
+  }
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "success": false,
+  "error": "Unauthorized. Affiliate access required."
+}
+```
+
+---
+
+### 4. Update Affiliate Profile
 Update the authenticated affiliate's profile information.
 
 **Endpoint:** `PUT /api/affiliate/profile/`
@@ -144,7 +240,7 @@ Update the authenticated affiliate's profile information.
 
 ---
 
-### 4. Request Cashout
+### 5. Request Cashout
 Request a payout from pending earnings.
 
 **Endpoint:** `POST /api/affiliate/cashout/`
@@ -193,7 +289,7 @@ Request a payout from pending earnings.
 
 ## Admin Endpoints
 
-### 5. Get All Affiliates
+### 6. Get All Affiliates
 Get a paginated list of all affiliates (admin only).
 
 **Endpoint:** `GET /api/affiliate/all/`
@@ -250,7 +346,7 @@ Get a paginated list of all affiliates (admin only).
 
 ---
 
-### 6. Get Affiliate Transactions
+### 7. Get Affiliate Transactions (Admin)
 Get transaction history for a specific affiliate (admin only).
 
 **Endpoint:** `GET /api/affiliate/{affiliate_id}/transactions/`
@@ -306,7 +402,7 @@ Get transaction history for a specific affiliate (admin only).
 
 ---
 
-### 7. Update Commission Rate
+### 8. Update Commission Rate
 Update an affiliate's commission rate (admin only).
 
 **Endpoint:** `PUT /api/affiliate/{affiliate_id}/update-commission/`
@@ -353,7 +449,7 @@ Update an affiliate's commission rate (admin only).
 
 ---
 
-### 8. Suspend Affiliate
+### 9. Suspend Affiliate
 Suspend/deactivate an affiliate (admin only).
 
 **Endpoint:** `PUT /api/affiliate/{affiliate_id}/suspend/`
@@ -389,7 +485,7 @@ Suspend/deactivate an affiliate (admin only).
 
 ---
 
-### 9. Get Payout Requests
+### 10. Get Payout Requests
 Get all affiliate payout requests (admin only).
 
 **Endpoint:** `GET /api/affiliate/payout-requests/`
@@ -438,7 +534,7 @@ Get all affiliate payout requests (admin only).
 
 ---
 
-### 10. Approve Payout Request
+### 11. Approve Payout Request
 Approve an affiliate payout request (admin only).
 
 **Endpoint:** `PUT /api/affiliate/payout-requests/{payout_id}/approve/`
@@ -479,7 +575,7 @@ Approve an affiliate payout request (admin only).
 
 ---
 
-### 11. Reject Payout Request
+### 12. Reject Payout Request
 Reject an affiliate payout request (admin only).
 
 **Endpoint:** `PUT /api/affiliate/payout-requests/{payout_id}/reject/`
