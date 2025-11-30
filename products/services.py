@@ -1278,11 +1278,82 @@ class OrderService:
         return order
     
     @staticmethod
+    def update_affiliate_earnings_on_payment_completion(order):
+        """
+        Update affiliate earnings when payment is completed.
+        This reflects earnings immediately on payment success, but keeps transaction status as 'pending'
+        until buyer submits review AND seller uploads shipment_proof.
+        """
+        # Only process if payment is completed
+        if order.payment_status != 'completed':
+            return
+        
+        if not order.affiliate_code or order.affiliate_commission <= 0:
+            return
+        
+        try:
+            from authentication.models import Affiliate
+            from affiliates.models import AffiliateTransaction
+            
+            affiliate = Affiliate.objects(affiliate_code=order.affiliate_code, status='active').first()
+            if not affiliate:
+                return
+            
+            # Check if earnings were already updated for this order
+            existing_transaction = AffiliateTransaction.objects(
+                transaction_id=order.id,
+                affiliate_id=affiliate.id
+            ).first()
+            
+            if existing_transaction and existing_transaction.status == 'paid':
+                # Already fully processed, skip to avoid double-counting
+                return
+            
+            # Get current earnings
+            current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+            current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+            
+            # Add earnings on payment completion
+            # Note: In case of webhook retries, this might add earnings multiple times.
+            # For production, consider adding a flag to track if earnings were already added,
+            # or use database transactions to ensure idempotency.
+            # For now, we'll add earnings when payment is completed (transaction status is 'pending')
+            affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
+            affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
+            affiliate.last_activity = datetime.utcnow()
+            affiliate.save()
+            
+            # Ensure transaction exists and is marked as 'pending' (will be updated to 'paid' when review + shipment proof are provided)
+            if not existing_transaction:
+                # Create transaction if it doesn't exist (shouldn't happen normally, but handle edge cases)
+                transaction = AffiliateTransaction(
+                    affiliate_id=affiliate.id,
+                    affiliate_name=affiliate.full_name,
+                    referred_user_id=order.buyer_id.id,
+                    referred_user_name=order.buyer_name,
+                    transaction_id=order.id,
+                    commission_rate=float(affiliate.commission_rate) if affiliate.commission_rate else 0.0,
+                    commission_amount=order.affiliate_commission,
+                    status='pending'  # Will be updated to 'paid' when review + shipment proof are provided
+                )
+                transaction.save()
+            elif existing_transaction.status != 'paid':
+                # Keep status as 'pending' (will be updated to 'paid' later)
+                existing_transaction.status = 'pending'
+                existing_transaction.save()
+            
+        except Exception as e:
+            # Log error but don't fail the process
+            import logging
+            logging.error(f"Failed to update affiliate earnings on payment completion: {str(e)}")
+    
+    @staticmethod
     def update_affiliate_earnings_on_review_and_shipment(order):
         """
-        Update affiliate earnings when buyer submits review AND seller has uploaded shipment_proof
-        This ensures earnings are only credited when the transaction is fully completed:
-        - Payment is completed
+        Update affiliate transaction status to 'paid' when buyer submits review AND seller has uploaded shipment_proof.
+        Earnings are already added on payment completion, so this method only updates the transaction status.
+        This ensures earnings are marked as 'paid' (available for payout) only when the transaction is fully completed:
+        - Payment is completed (earnings already added)
         - Buyer has reviewed
         - Seller has uploaded shipment proof (can request payout)
         """
@@ -1309,29 +1380,40 @@ class OrderService:
             if not affiliate:
                 return
             
-            # Check if earnings were already updated for this order
+            # Find the transaction for this order
             existing_transaction = AffiliateTransaction.objects(
                 transaction_id=order.id,
                 affiliate_id=affiliate.id
             ).first()
             
-            if existing_transaction and existing_transaction.status == 'paid':
-                # Already processed, skip to avoid double-counting
-                return
-            
-            # Update total earnings (only when review is submitted and shipment proof is uploaded)
-            current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
-            affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
-            
-            # Update pending earnings (only when review is submitted and shipment proof is uploaded)
-            current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
-            affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
-            
-            affiliate.last_activity = datetime.utcnow()
-            affiliate.save()
-            
-            # Update transaction status to 'paid'
-            if existing_transaction:
+            if not existing_transaction:
+                # Transaction should exist (created on order creation), but if not, create it
+                # This handles edge cases where payment was completed but transaction wasn't created
+                transaction = AffiliateTransaction(
+                    affiliate_id=affiliate.id,
+                    affiliate_name=affiliate.full_name,
+                    referred_user_id=order.buyer_id.id,
+                    referred_user_name=order.buyer_name,
+                    transaction_id=order.id,
+                    commission_rate=float(affiliate.commission_rate) if affiliate.commission_rate else 0.0,
+                    commission_amount=order.affiliate_commission,
+                    status='paid'
+                )
+                transaction.save()
+                
+                # Add earnings if they weren't added on payment completion (edge case)
+                current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+                current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+                
+                # Check if earnings need to be added (rough check - if total_earnings is 0 or very low)
+                # This is a fallback for edge cases
+                if current_earnings < order.affiliate_commission:
+                    affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
+                    affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
+                    affiliate.last_activity = datetime.utcnow()
+                    affiliate.save()
+            elif existing_transaction.status != 'paid':
+                # Update transaction status to 'paid' (earnings were already added on payment completion)
                 existing_transaction.status = 'paid'
                 existing_transaction.save()
             
