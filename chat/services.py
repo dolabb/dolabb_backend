@@ -150,9 +150,12 @@ class ChatService:
         offers_dict = {}
         offer_product_ids = set()
         if offer_ids:
+            # Load all offer fields needed for complete offer object (matching WebSocket format)
             offers = Offer.objects(id__in=list(offer_ids)).only(
-                'id', 'offer_amount', 'original_price', 'status', 'shipping_cost',
-                'expiration_date', 'counter_offer_amount', 'product_id'
+                'id', 'product_id', 'buyer_id', 'seller_id', 'offer_amount', 'original_price', 
+                'status', 'shipping_cost', 'expiration_date', 'counter_offer_amount',
+                'last_countered_by', 'buyer_counter_count', 'seller_counter_count',
+                'created_at', 'updated_at'
             )
             offers_dict = {str(offer.id): offer for offer in offers}
             # Collect product IDs from offers
@@ -238,22 +241,51 @@ class ChatService:
                 'isRead': msg.is_read if hasattr(msg, 'is_read') else False
             }
             
-            # If message has an offer, include full offer details with product information
+            # If message has an offer, include complete offer details with product information (matching WebSocket format)
             if offer_id_str:
                 offer = offers_dict.get(offer_id_str)
                 if offer:
+                    # Extract buyer_id and seller_id safely
+                    buyer_id_str = None
+                    seller_id_str = None
+                    if offer.buyer_id:
+                        buyer_id_str = str(offer.buyer_id.id if hasattr(offer.buyer_id, 'id') else offer.buyer_id)
+                    if offer.seller_id:
+                        seller_id_str = str(offer.seller_id.id if hasattr(offer.seller_id, 'id') else offer.seller_id)
+                    
                     offer_data = {
                         'id': offer_id_str,
+                        'productId': str(offer.product_id.id) if offer.product_id and hasattr(offer.product_id, 'id') else (str(offer.product_id) if offer.product_id else None),
+                        'buyerId': buyer_id_str,
+                        'sellerId': seller_id_str,
                         'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
                         'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
                         'status': offer.status,
-                        'shippingCost': float(offer.shipping_cost) if offer.shipping_cost else 0.0,
-                        'expirationDate': offer.expiration_date.isoformat() if offer.expiration_date else None,
+                        'createdAt': offer.created_at.isoformat() if offer.created_at else None,
+                        'updatedAt': offer.updated_at.isoformat() if offer.updated_at else None,
                     }
                     
                     # Include counter offer if it exists
                     if offer.counter_offer_amount:
                         offer_data['counterAmount'] = float(offer.counter_offer_amount)
+                    
+                    # Include shipping cost if available
+                    if hasattr(offer, 'shipping_cost') and offer.shipping_cost:
+                        offer_data['shippingCost'] = float(offer.shipping_cost)
+                    
+                    # Include expiration date if available
+                    if hasattr(offer, 'expiration_date') and offer.expiration_date:
+                        offer_data['expirationDate'] = offer.expiration_date.isoformat()
+                    
+                    # Include counter tracking fields (safe access for old documents)
+                    if hasattr(offer, 'last_countered_by') and offer.last_countered_by:
+                        offer_data['lastCounteredBy'] = offer.last_countered_by
+                    
+                    if hasattr(offer, 'buyer_counter_count') and offer.buyer_counter_count is not None:
+                        offer_data['buyerCounterCount'] = offer.buyer_counter_count
+                    
+                    if hasattr(offer, 'seller_counter_count') and offer.seller_counter_count is not None:
+                        offer_data['sellerCounterCount'] = offer.seller_counter_count
                     
                     # Get product details from cached products - limit images to first 3 for performance
                     if offer.product_id:
