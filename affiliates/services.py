@@ -1,7 +1,8 @@
 """
 Affiliate services
 """
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
 from affiliates.models import AffiliateTransaction, AffiliatePayoutRequest
 from authentication.models import Affiliate, User
 from products.models import Order
@@ -200,4 +201,106 @@ class AffiliateService:
         payout.save()
         
         return payout
+    
+    @staticmethod
+    def get_earnings_breakdown(affiliate_id, period='monthly', limit=12, start_date=None, end_date=None):
+        """Get time-based earnings breakdown for graphs"""
+        affiliate = Affiliate.objects(id=affiliate_id).first()
+        if not affiliate:
+            raise ValueError("Affiliate not found")
+        
+        # Get all transactions for this affiliate
+        transactions_query = AffiliateTransaction.objects(affiliate_id=affiliate_id)
+        
+        # Apply date filters if provided
+        if start_date:
+            if isinstance(start_date, str):
+                start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            transactions_query = transactions_query.filter(date__gte=start_date)
+        
+        if end_date:
+            if isinstance(end_date, str):
+                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            transactions_query = transactions_query.filter(date__lte=end_date)
+        
+        transactions = list(transactions_query.order_by('-date'))
+        
+        # Get summary totals
+        total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+        pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+        paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+        
+        # Group transactions by period
+        period_data = defaultdict(lambda: {
+            'totalEarnings': 0.0,
+            'pendingEarnings': 0.0,
+            'paidEarnings': 0.0,
+            'transactionCount': 0,
+            'label': ''
+        })
+        
+        for transaction in transactions:
+            trans_date = transaction.date
+            if not trans_date:
+                continue
+            
+            # Determine period key and label based on period type
+            if period == 'daily':
+                period_key = trans_date.strftime('%Y-%m-%d')
+                period_label = trans_date.strftime('%B %d, %Y')
+            elif period == 'weekly':
+                # Get the Monday of the week
+                monday = trans_date - timedelta(days=trans_date.weekday())
+                period_key = monday.strftime('%Y-%m-%d')  # Use Monday date as key
+                period_label = f"Week of {monday.strftime('%B %d, %Y')}"
+            elif period == 'yearly':
+                period_key = trans_date.strftime('%Y')
+                period_label = trans_date.strftime('%Y')
+            else:  # monthly (default)
+                period_key = trans_date.strftime('%Y-%m')
+                period_label = trans_date.strftime('%B %Y')
+            
+            # Add transaction data to period
+            period_data[period_key]['totalEarnings'] += transaction.commission_amount
+            period_data[period_key]['transactionCount'] += 1
+            period_data[period_key]['label'] = period_label
+            
+            if transaction.status == 'paid':
+                period_data[period_key]['paidEarnings'] += transaction.commission_amount
+            else:
+                period_data[period_key]['pendingEarnings'] += transaction.commission_amount
+        
+        # Convert to list and sort by period (descending - most recent first)
+        breakdown = []
+        sorted_periods = sorted(period_data.keys(), reverse=True)[:limit]
+        
+        for period_key in sorted_periods:
+            data = period_data[period_key]
+            breakdown.append({
+                'period': period_key,
+                'label': data['label'] or period_key,
+                'totalEarnings': round(data['totalEarnings'], 2),
+                'pendingEarnings': round(data['pendingEarnings'], 2),
+                'paidEarnings': round(data['paidEarnings'], 2),
+                'transactionCount': data['transactionCount']
+            })
+        
+        # Calculate total pages (for pagination, though we're limiting results)
+        total_items = len(period_data)
+        total_pages = 1  # Since we're limiting, we show all in one page
+        
+        return {
+            'summary': {
+                'totalEarnings': round(total_earnings, 2),
+                'pendingEarnings': round(pending_earnings, 2),
+                'paidEarnings': round(paid_earnings, 2),
+                'availableBalance': round(pending_earnings, 2)
+            },
+            'breakdown': breakdown,
+            'pagination': {
+                'currentPage': 1,
+                'totalPages': total_pages,
+                'totalItems': total_items
+            }
+        }
 

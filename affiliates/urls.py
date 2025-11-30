@@ -9,6 +9,7 @@ urlpatterns = [
     path('cashout/', views.request_cashout, name='request_cashout'),
     path('profile/', views.affiliate_profile, name='affiliate_profile'),
     path('transactions/', views.get_my_transactions, name='get_my_transactions'),  # Affiliate's own transactions
+    path('earnings-breakdown/', views.get_earnings_breakdown, name='get_earnings_breakdown'),  # Time-based earnings breakdown for graphs
     path('all/', views.get_all_affiliates, name='get_all_affiliates'),
     path('<str:affiliate_id>/transactions/', views.get_affiliate_transactions, name='get_affiliate_transactions'),  # Admin: get any affiliate's transactions
     path('<str:affiliate_id>/update-commission/', views.update_commission_rate, name='update_commission_rate'),

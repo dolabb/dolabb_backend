@@ -1,12 +1,15 @@
 # Affiliate API Documentation
 
 ## Base URL
+
 ```
 https://dolabb-backend-2vsj.onrender.com/api/affiliate/
 ```
 
 ## Authentication
+
 Most endpoints require authentication via JWT token in the Authorization header:
+
 ```
 Authorization: Bearer <token>
 ```
@@ -20,9 +23,11 @@ Admin endpoints require admin privileges.
 **For the affiliate dashboard, use these endpoints:**
 
 ### Summary Data (Total Earnings, Pending, Available Balance, Status)
+
 **Endpoint:** `GET /api/affiliate/profile/`
 
 This endpoint returns:
+
 - ✅ **Total Earnings** (`totalEarnings`)
 - ✅ **Pending Earnings** (`pendingEarnings`)
 - ✅ **Available Balance** (`availableBalance` - same as pendingEarnings)
@@ -32,9 +37,11 @@ This endpoint returns:
 - ✅ **Code Usage Count** (`codeUsageCount`)
 
 ### Earning Breakdown (Detailed Transaction List)
+
 **Endpoint:** `GET /api/affiliate/transactions/`
 
 This endpoint returns:
+
 - ✅ **Earning Breakdown** - List of all transactions with:
   - Transaction ID
   - Referred User Name
@@ -43,17 +50,35 @@ This endpoint returns:
   - Status (pending/paid)
   - Overall stats (totalReferrals, totalEarnings, Total Sales, Commission Rate)
 
+### Time-Based Earnings Breakdown (For Graphs/Trends)
+
+**Endpoint:** `GET /api/affiliate/earnings-breakdown/`
+
+This endpoint returns:
+
+- ✅ **Time-Based Breakdown** - Earnings grouped by time period (daily, weekly, monthly, yearly) with:
+  - Period identifier and label
+  - Total earnings per period
+  - Pending earnings per period
+  - Paid earnings per period
+  - Transaction count per period
+  - Summary totals across all periods
+
 **Example Dashboard Implementation:**
+
 ```javascript
 // Get summary data
 const profile = await axios.get('/api/affiliate/profile/', {
-  headers: { Authorization: `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${token}` },
 });
 
 // Get earning breakdown
-const transactions = await axios.get('/api/affiliate/transactions/?page=1&limit=20', {
-  headers: { Authorization: `Bearer ${token}` }
-});
+const transactions = await axios.get(
+  '/api/affiliate/transactions/?page=1&limit=20',
+  {
+    headers: { Authorization: `Bearer ${token}` },
+  }
+);
 ```
 
 ---
@@ -61,6 +86,7 @@ const transactions = await axios.get('/api/affiliate/transactions/?page=1&limit=
 ## Public Endpoints
 
 ### 1. Validate Affiliate Code
+
 Validate if an affiliate code is valid and active.
 
 **Endpoint:** `POST /api/affiliate/validate-code/`
@@ -68,6 +94,7 @@ Validate if an affiliate code is valid and active.
 **Authentication:** Not required (public)
 
 **Request Body:**
+
 ```json
 {
   "code": "AFFILIATE123"
@@ -75,6 +102,7 @@ Validate if an affiliate code is valid and active.
 ```
 
 **Success Response (200):**
+
 ```json
 {
   "valid": true,
@@ -91,6 +119,7 @@ Validate if an affiliate code is valid and active.
 ```
 
 **Error Response (200):**
+
 ```json
 {
   "valid": false,
@@ -103,6 +132,7 @@ Validate if an affiliate code is valid and active.
 ## Affiliate Endpoints (Authenticated)
 
 ### 2. Get Affiliate Profile
+
 Get the authenticated affiliate's profile information.
 
 **Endpoint:** `GET /api/affiliate/profile/`
@@ -110,6 +140,7 @@ Get the authenticated affiliate's profile information.
 **Authentication:** Required (Affiliate)
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -121,8 +152,8 @@ Get the authenticated affiliate's profile information.
     "country_code": "+1",
     "affiliate_code": "AFFILIATE123",
     "profile_image": "https://example.com/media/profile.jpg",
-    "totalEarnings": 1500.50,
-    "totalCommissions": 1500.50,
+    "totalEarnings": 1500.5,
+    "totalCommissions": 1500.5,
     "pendingEarnings": 500.25,
     "paidEarnings": 1000.25,
     "codeUsageCount": 15,
@@ -142,6 +173,7 @@ Get the authenticated affiliate's profile information.
 ```
 
 **Error Response (401):**
+
 ```json
 {
   "success": false,
@@ -152,6 +184,7 @@ Get the authenticated affiliate's profile information.
 ---
 
 ### 3. Get My Transactions (Earning Breakdown)
+
 Get the authenticated affiliate's transaction history with earning breakdown.
 
 **Endpoint:** `GET /api/affiliate/transactions/`
@@ -159,12 +192,14 @@ Get the authenticated affiliate's transaction history with earning breakdown.
 **Authentication:** Required (Affiliate)
 
 **Query Parameters:**
+
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 
 **Example:** `GET /api/affiliate/transactions/?page=1&limit=20`
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -175,7 +210,7 @@ Get the authenticated affiliate's transaction history with earning breakdown.
       "affiliateName": "John Doe",
       "stats": {
         "totalReferrals": 15,
-        "totalEarnings": 1500.50,
+        "totalEarnings": 1500.5,
         "Total Sales": 15,
         "Commission Rate": 25.0
       },
@@ -195,6 +230,7 @@ Get the authenticated affiliate's transaction history with earning breakdown.
 ```
 
 **Error Response (401):**
+
 ```json
 {
   "success": false,
@@ -204,7 +240,91 @@ Get the authenticated affiliate's transaction history with earning breakdown.
 
 ---
 
-### 4. Update Affiliate Profile
+### 4. Get Earnings Breakdown (Time-Based for Graphs)
+Get time-based earnings breakdown for trend analysis and graphs.
+
+**Endpoint:** `GET /api/affiliate/earnings-breakdown/`
+
+**Authentication:** Required (Affiliate)
+
+**Query Parameters:**
+
+- `period` (optional): Time period grouping - `daily`, `weekly`, `monthly`, `yearly` (default: `monthly`)
+- `limit` (optional): Number of periods to return (default: 12)
+- `startDate` (optional): Start date filter in ISO format (e.g., `2024-01-01T00:00:00Z`)
+- `endDate` (optional): End date filter in ISO format (e.g., `2024-12-31T23:59:59Z`)
+
+**Example:** `GET /api/affiliate/earnings-breakdown/?period=monthly&limit=12`
+
+**Example with date range:**
+`GET /api/affiliate/earnings-breakdown/?period=monthly&limit=12&startDate=2024-01-01T00:00:00Z&endDate=2024-12-31T23:59:59Z`
+
+**Success Response (200):**
+
+```json
+{
+  "success": true,
+  "summary": {
+    "totalEarnings": 1500.5,
+    "pendingEarnings": 500.25,
+    "paidEarnings": 1000.25,
+    "availableBalance": 500.25
+  },
+  "breakdown": [
+    {
+      "period": "2025-11",
+      "label": "November 2025",
+      "totalEarnings": 200.5,
+      "pendingEarnings": 50.25,
+      "paidEarnings": 150.25,
+      "transactionCount": 5
+    },
+    {
+      "period": "2025-10",
+      "label": "October 2025",
+      "totalEarnings": 300.75,
+      "pendingEarnings": 100.0,
+      "paidEarnings": 200.75,
+      "transactionCount": 8
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 1,
+    "totalItems": 12
+  }
+}
+```
+
+**Period Format Examples:**
+
+- **Daily:** `period: "2025-11-15"`, `label: "November 15, 2025"`
+- **Weekly:** `period: "2025-11-10"` (Monday date), `label: "Week of November 10, 2025"`
+- **Monthly:** `period: "2025-11"`, `label: "November 2025"`
+- **Yearly:** `period: "2025"`, `label: "2025"`
+
+**Error Response (401):**
+
+```json
+{
+  "success": false,
+  "error": "Unauthorized. Affiliate access required."
+}
+```
+
+**Error Response (404):**
+
+```json
+{
+  "success": false,
+  "error": "Affiliate not found"
+}
+```
+
+---
+
+### 5. Update Affiliate Profile
+
 Update the authenticated affiliate's profile information.
 
 **Endpoint:** `PUT /api/affiliate/profile/`
@@ -212,6 +332,7 @@ Update the authenticated affiliate's profile information.
 **Authentication:** Required (Affiliate)
 
 **Request Body:**
+
 ```json
 {
   "full_name": "John Doe Updated",
@@ -228,6 +349,7 @@ Update the authenticated affiliate's profile information.
 **Note:** All fields are optional. Only include fields you want to update.
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -240,7 +362,8 @@ Update the authenticated affiliate's profile information.
 
 ---
 
-### 5. Request Cashout
+### 6. Request Cashout
+
 Request a payout from pending earnings.
 
 **Endpoint:** `POST /api/affiliate/cashout/`
@@ -248,21 +371,23 @@ Request a payout from pending earnings.
 **Authentication:** Required (Affiliate)
 
 **Request Body:**
+
 ```json
 {
-  "amount": 500.00,
+  "amount": 500.0,
   "paymentMethod": "Bank Transfer"
 }
 ```
 
 **Success Response (201):**
+
 ```json
 {
   "success": true,
   "cashoutRequest": {
     "id": "507f1f77bcf86cd799439012",
     "affiliateId": "507f1f77bcf86cd799439011",
-    "amount": 500.00,
+    "amount": 500.0,
     "status": "pending",
     "requestedAt": "2024-01-15T10:30:00.000Z"
   }
@@ -270,6 +395,7 @@ Request a payout from pending earnings.
 ```
 
 **Error Response (400):**
+
 ```json
 {
   "success": false,
@@ -278,6 +404,7 @@ Request a payout from pending earnings.
 ```
 
 **Error Response (404):**
+
 ```json
 {
   "success": false,
@@ -289,7 +416,8 @@ Request a payout from pending earnings.
 
 ## Admin Endpoints
 
-### 6. Get All Affiliates
+### 7. Get All Affiliates
+
 Get a paginated list of all affiliates (admin only).
 
 **Endpoint:** `GET /api/affiliate/all/`
@@ -297,12 +425,14 @@ Get a paginated list of all affiliates (admin only).
 **Authentication:** Required (Admin)
 
 **Query Parameters:**
+
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 
 **Example:** `GET /api/affiliate/all/?page=1&limit=20`
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -315,7 +445,7 @@ Get a paginated list of all affiliates (admin only).
       "commissionRate": 25.0,
       "codeUsageCount": 15,
       "Earnings": {
-        "Total": 1500.50,
+        "Total": 1500.5,
         "Pending": 500.25,
         "Paid": 1000.25
       },
@@ -323,7 +453,7 @@ Get a paginated list of all affiliates (admin only).
       "Last Activity": "2024-01-15T10:30:00.000Z",
       "stats": {
         "totalReferrals": 15,
-        "totalEarnings": 1500.50,
+        "totalEarnings": 1500.5,
         "totalTransactions": 15
       }
     }
@@ -337,6 +467,7 @@ Get a paginated list of all affiliates (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -346,7 +477,8 @@ Get a paginated list of all affiliates (admin only).
 
 ---
 
-### 7. Get Affiliate Transactions (Admin)
+### 8. Get Affiliate Transactions (Admin)
+
 Get transaction history for a specific affiliate (admin only).
 
 **Endpoint:** `GET /api/affiliate/{affiliate_id}/transactions/`
@@ -354,15 +486,19 @@ Get transaction history for a specific affiliate (admin only).
 **Authentication:** Required (Admin)
 
 **URL Parameters:**
+
 - `affiliate_id`: The affiliate's ID
 
 **Query Parameters:**
+
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 
-**Example:** `GET /api/affiliate/507f1f77bcf86cd799439011/transactions/?page=1&limit=20`
+**Example:**
+`GET /api/affiliate/507f1f77bcf86cd799439011/transactions/?page=1&limit=20`
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -373,7 +509,7 @@ Get transaction history for a specific affiliate (admin only).
       "affiliateName": "John Doe",
       "stats": {
         "totalReferrals": 15,
-        "totalEarnings": 1500.50,
+        "totalEarnings": 1500.5,
         "Total Sales": 15,
         "Commission Rate": 25.0
       },
@@ -393,6 +529,7 @@ Get transaction history for a specific affiliate (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -402,7 +539,8 @@ Get transaction history for a specific affiliate (admin only).
 
 ---
 
-### 8. Update Commission Rate
+### 9. Update Commission Rate
+
 Update an affiliate's commission rate (admin only).
 
 **Endpoint:** `PUT /api/affiliate/{affiliate_id}/update-commission/`
@@ -410,9 +548,11 @@ Update an affiliate's commission rate (admin only).
 **Authentication:** Required (Admin)
 
 **URL Parameters:**
+
 - `affiliate_id`: The affiliate's ID
 
 **Request Body:**
+
 ```json
 {
   "commissionRate": 30.0
@@ -420,6 +560,7 @@ Update an affiliate's commission rate (admin only).
 ```
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -432,6 +573,7 @@ Update an affiliate's commission rate (admin only).
 ```
 
 **Error Response (404):**
+
 ```json
 {
   "success": false,
@@ -440,6 +582,7 @@ Update an affiliate's commission rate (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -449,7 +592,8 @@ Update an affiliate's commission rate (admin only).
 
 ---
 
-### 9. Suspend Affiliate
+### 10. Suspend Affiliate
+
 Suspend/deactivate an affiliate (admin only).
 
 **Endpoint:** `PUT /api/affiliate/{affiliate_id}/suspend/`
@@ -457,9 +601,11 @@ Suspend/deactivate an affiliate (admin only).
 **Authentication:** Required (Admin)
 
 **URL Parameters:**
+
 - `affiliate_id`: The affiliate's ID
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -468,6 +614,7 @@ Suspend/deactivate an affiliate (admin only).
 ```
 
 **Error Response (404):**
+
 ```json
 {
   "success": false,
@@ -476,6 +623,7 @@ Suspend/deactivate an affiliate (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -485,7 +633,8 @@ Suspend/deactivate an affiliate (admin only).
 
 ---
 
-### 10. Get Payout Requests
+### 11. Get Payout Requests
+
 Get all affiliate payout requests (admin only).
 
 **Endpoint:** `GET /api/affiliate/payout-requests/`
@@ -493,13 +642,16 @@ Get all affiliate payout requests (admin only).
 **Authentication:** Required (Admin)
 
 **Query Parameters:**
+
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 - `status` (optional): Filter by status (`pending`, `approved`, `rejected`)
 
-**Example:** `GET /api/affiliate/payout-requests/?page=1&limit=20&status=pending`
+**Example:**
+`GET /api/affiliate/payout-requests/?page=1&limit=20&status=pending`
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -508,7 +660,7 @@ Get all affiliate payout requests (admin only).
       "_id": "507f1f77bcf86cd799439015",
       "affiliateId": "507f1f77bcf86cd799439011",
       "affiliateName": "John Doe",
-      "amount": 500.00,
+      "amount": 500.0,
       "Requested Date": "2024-01-15T10:30:00.000Z",
       "Payment Method": "Bank Transfer",
       "Status": "pending",
@@ -525,6 +677,7 @@ Get all affiliate payout requests (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -534,7 +687,8 @@ Get all affiliate payout requests (admin only).
 
 ---
 
-### 11. Approve Payout Request
+### 12. Approve Payout Request
+
 Approve an affiliate payout request (admin only).
 
 **Endpoint:** `PUT /api/affiliate/payout-requests/{payout_id}/approve/`
@@ -542,9 +696,11 @@ Approve an affiliate payout request (admin only).
 **Authentication:** Required (Admin)
 
 **URL Parameters:**
+
 - `payout_id`: The payout request ID
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -553,11 +709,13 @@ Approve an affiliate payout request (admin only).
 ```
 
 **Note:** When a payout is approved:
+
 - The payout amount is moved from `pending_earnings` to `paid_earnings`
 - The payout status is updated to `approved`
 - The `reviewed_at` and `reviewed_by` fields are set
 
 **Error Response (404):**
+
 ```json
 {
   "success": false,
@@ -566,6 +724,7 @@ Approve an affiliate payout request (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -575,7 +734,8 @@ Approve an affiliate payout request (admin only).
 
 ---
 
-### 12. Reject Payout Request
+### 13. Reject Payout Request
+
 Reject an affiliate payout request (admin only).
 
 **Endpoint:** `PUT /api/affiliate/payout-requests/{payout_id}/reject/`
@@ -583,9 +743,11 @@ Reject an affiliate payout request (admin only).
 **Authentication:** Required (Admin)
 
 **URL Parameters:**
+
 - `payout_id`: The payout request ID
 
 **Request Body:**
+
 ```json
 {
   "reason": "Insufficient documentation"
@@ -593,6 +755,7 @@ Reject an affiliate payout request (admin only).
 ```
 
 **Success Response (200):**
+
 ```json
 {
   "success": true,
@@ -601,12 +764,14 @@ Reject an affiliate payout request (admin only).
 ```
 
 **Note:** When a payout is rejected:
+
 - The payout status is updated to `rejected`
 - The `rejection_reason` is saved
 - The `reviewed_at` and `reviewed_by` fields are set
 - The pending earnings remain unchanged (not deducted)
 
 **Error Response (404):**
+
 ```json
 {
   "success": false,
@@ -615,6 +780,7 @@ Reject an affiliate payout request (admin only).
 ```
 
 **Error Response (403):**
+
 ```json
 {
   "success": false,
@@ -637,6 +803,7 @@ See the authentication API documentation for details.
 ## Data Models
 
 ### Affiliate Model
+
 ```json
 {
   "id": "ObjectId",
@@ -662,6 +829,7 @@ See the authentication API documentation for details.
 ```
 
 ### Affiliate Transaction Model
+
 ```json
 {
   "id": "ObjectId",
@@ -678,6 +846,7 @@ See the authentication API documentation for details.
 ```
 
 ### Affiliate Payout Request Model
+
 ```json
 {
   "id": "ObjectId",
@@ -698,38 +867,45 @@ See the authentication API documentation for details.
 
 ## Error Codes
 
-| Status Code | Description |
-|------------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request (invalid input) |
-| 401 | Unauthorized (authentication required) |
-| 403 | Forbidden (insufficient permissions) |
-| 404 | Not Found |
-| 500 | Internal Server Error |
+| Status Code | Description                            |
+| ----------- | -------------------------------------- |
+| 200         | Success                                |
+| 201         | Created                                |
+| 400         | Bad Request (invalid input)            |
+| 401         | Unauthorized (authentication required) |
+| 403         | Forbidden (insufficient permissions)   |
+| 404         | Not Found                              |
+| 500         | Internal Server Error                  |
 
 ---
 
 ## Notes
 
 1. **Earnings Flow:**
-   - Earnings are added to `total_earnings` and `pending_earnings` when payment is completed
-   - Transaction status remains `pending` until buyer reviews AND seller uploads shipment proof
+
+   - Earnings are added to `total_earnings` and `pending_earnings` when payment
+     is completed
+   - Transaction status remains `pending` until buyer reviews AND seller uploads
+     shipment proof
    - When transaction is fully completed, status changes to `paid`
    - Payout requests can only be made from `pending_earnings`
-   - When payout is approved, amount moves from `pending_earnings` to `paid_earnings`
+   - When payout is approved, amount moves from `pending_earnings` to
+     `paid_earnings`
 
 2. **Commission Rate:**
+
    - Stored as string in database (e.g., "25.0")
    - Represents percentage of platform fee
    - Can be updated by admin per affiliate
 
 3. **Status Values:**
+
    - Affiliate status: `active`, `deactivated`
    - Transaction status: `pending`, `paid`
    - Payout status: `pending`, `approved`, `rejected`
 
 4. **Pagination:**
+
    - Default page: 1
    - Default limit: 20
    - Pagination info included in response
@@ -744,9 +920,10 @@ See the authentication API documentation for details.
 ## Example Usage
 
 ### JavaScript/TypeScript (Axios)
+
 ```javascript
 // Validate affiliate code
-const validateCode = async (code) => {
+const validateCode = async code => {
   const response = await axios.post(
     'https://dolabb-backend-2vsj.onrender.com/api/affiliate/validate-code/',
     { code }
@@ -755,11 +932,11 @@ const validateCode = async (code) => {
 };
 
 // Get affiliate profile
-const getProfile = async (token) => {
+const getProfile = async token => {
   const response = await axios.get(
     'https://dolabb-backend-2vsj.onrender.com/api/affiliate/profile/',
     {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     }
   );
   return response.data;
@@ -771,7 +948,18 @@ const requestCashout = async (token, amount) => {
     'https://dolabb-backend-2vsj.onrender.com/api/affiliate/cashout/',
     { amount, paymentMethod: 'Bank Transfer' },
     {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return response.data;
+};
+
+// Get earnings breakdown for graphs
+const getEarningsBreakdown = async (token, period = 'monthly', limit = 12) => {
+  const response = await axios.get(
+    `https://dolabb-backend-2vsj.onrender.com/api/affiliate/earnings-breakdown/?period=${period}&limit=${limit}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
     }
   );
   return response.data;
@@ -783,4 +971,3 @@ const requestCashout = async (token, amount) => {
 ## Support
 
 For issues or questions, contact the development team.
-

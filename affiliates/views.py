@@ -317,6 +317,46 @@ def get_my_transactions(request):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+def get_earnings_breakdown(request):
+    """Get time-based earnings breakdown for graphs (authenticated affiliate only)"""
+    try:
+        affiliate = request.user
+        
+        # Verify user is an affiliate
+        if not affiliate or not hasattr(affiliate, 'affiliate_code'):
+            return Response({'success': False, 'error': 'Unauthorized. Affiliate access required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        affiliate_id = str(affiliate.id)
+        
+        # Get query parameters
+        period = request.GET.get('period', 'monthly').lower()
+        if period not in ['daily', 'weekly', 'monthly', 'yearly']:
+            period = 'monthly'
+        
+        limit = int(request.GET.get('limit', 12))
+        start_date = request.GET.get('startDate')
+        end_date = request.GET.get('endDate')
+        
+        # Get breakdown
+        result = AffiliateService.get_earnings_breakdown(
+            affiliate_id=affiliate_id,
+            period=period,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return Response({
+            'success': True,
+            **result
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET', 'PUT'])
 def affiliate_profile(request):
     """Get or update affiliate profile (authenticated affiliate only)"""
