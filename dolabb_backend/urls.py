@@ -21,7 +21,7 @@ def api_root(request):
             'products': '/api/products/',
             'chat': '/api/chat/',
             'offers': '/api/offers/',
-            'payment': '/api/payment/',
+            'payment': '/api/payments/',
             'user': '/api/user/',
             'seller': '/api/seller/',
             'affiliate': '/api/affiliate/',
@@ -40,7 +40,8 @@ urlpatterns = [
     path('api/products/', include('products.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/offers/', include('products.offer_urls')),
-    path('api/payment/', include('payments.urls')),
+    path('api/payment/', include('payments.urls')),  # Keep for backward compatibility
+    path('api/payments/', include('payments.urls')),  # Primary route (matches frontend)
     path('api/user/', include('products.user_urls')),
     path('api/seller/', include('products.seller_urls')),
     path('api/affiliate/', include('affiliates.urls')),
