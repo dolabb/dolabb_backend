@@ -262,10 +262,24 @@ class AffiliateService:
         
         transactions = list(transactions_query.order_by('-date'))
         
-        # Get summary totals
+        # Get summary totals from affiliate (these account for cashouts and are the source of truth)
         total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
         pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
         paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+        
+        # Calculate transaction totals for reference (before cashout deductions)
+        total_from_transactions = sum(t.commission_amount for t in transactions)
+        pending_from_transactions = sum(t.commission_amount for t in transactions if t.status == 'pending')
+        paid_from_transactions = sum(t.commission_amount for t in transactions if t.status == 'paid')
+        
+        # Calculate ratio to adjust breakdown to match actual affiliate values
+        # This ensures breakdown matches the actual pending/paid after cashouts
+        if total_from_transactions > 0:
+            pending_ratio = pending_earnings / total_earnings if total_earnings > 0 else 0
+            paid_ratio = paid_earnings / total_earnings if total_earnings > 0 else 0
+        else:
+            pending_ratio = 0
+            paid_ratio = 0
         
         # Group transactions by period
         period_data = defaultdict(lambda: {
@@ -313,12 +327,25 @@ class AffiliateService:
         
         for period_key in sorted_periods:
             data = period_data[period_key]
+            period_total = data['totalEarnings']
+            
+            # Adjust pending/paid to match actual affiliate ratios (accounts for cashouts)
+            # If we have transactions, distribute based on actual affiliate pending/paid ratios
+            if total_earnings > 0 and period_total > 0:
+                # Calculate adjusted values based on actual affiliate ratios
+                adjusted_pending = period_total * pending_ratio
+                adjusted_paid = period_total * paid_ratio
+            else:
+                # Fallback to transaction-based calculation
+                adjusted_pending = data['pendingEarnings']
+                adjusted_paid = data['paidEarnings']
+            
             breakdown.append({
                 'period': period_key,
                 'label': data['label'] or period_key,
-                'totalEarnings': round(data['totalEarnings'], 2),
-                'pendingEarnings': round(data['pendingEarnings'], 2),
-                'paidEarnings': round(data['paidEarnings'], 2),
+                'totalEarnings': round(period_total, 2),
+                'pendingEarnings': round(adjusted_pending, 2),
+                'paidEarnings': round(adjusted_paid, 2),
                 'transactionCount': data['transactionCount']
             })
         
@@ -331,7 +358,11 @@ class AffiliateService:
                 'totalEarnings': round(total_earnings, 2),
                 'pendingEarnings': round(pending_earnings, 2),
                 'paidEarnings': round(paid_earnings, 2),
-                'availableBalance': round(pending_earnings, 2)
+                'availableBalance': round(pending_earnings, 2),
+                # Additional info for clarity
+                'totalFromTransactions': round(total_from_transactions, 2),
+                'pendingFromTransactions': round(pending_from_transactions, 2),
+                'paidFromTransactions': round(paid_from_transactions, 2)
             },
             'breakdown': breakdown,
             'pagination': {
