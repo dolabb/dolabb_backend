@@ -79,17 +79,20 @@ class ChatService:
         
         # Get messages with only required fields to prevent ReferenceField auto-dereferencing
         # Order by created_at DESC (newest first) - Page 1 = most recent messages
+        # Ensure conversation_id is string for proper comparison
+        conversation_id_str = str(conversation_id)
         skip = (page - 1) * limit
-        messages_queryset = Message.objects(conversation_id=conversation_id).only(
+        # Query ALL message types (text, offer, image) - no filtering by message_type
+        messages_queryset = Message.objects(conversation_id=conversation_id_str).only(
             'id', 'text', 'sender_id', 'receiver_id', 'offer_id', 'product_id', 
-            'message_type', 'attachments', 'created_at', 'is_read'
+            'message_type', 'attachments', 'created_at', 'is_read', 'conversation_id'
         ).order_by('-created_at').skip(skip).limit(limit)
         
         # Get total count - use estimated count for better performance on large collections
         # For exact count, use count(), but estimated_count() is faster for large datasets
         try:
-            # Try to get exact count efficiently
-            total = Message.objects(conversation_id=conversation_id).count()
+            # Try to get exact count efficiently - count ALL message types (text, offer, image)
+            total = Message.objects(conversation_id=conversation_id_str).count()
         except Exception:
             # Fallback to 0 if count fails
             total = 0
@@ -229,6 +232,7 @@ class ChatService:
                 'text': msg.text or '',
                 'senderId': sender_id,
                 'receiverId': receiver_id,
+                'conversationId': conversation_id_str,  # Include conversationId for consistency
                 'isSender': is_sender,
                 'sender': 'me' if is_sender else 'other',
                 'senderName': sender.full_name if sender else None,
@@ -319,7 +323,7 @@ class ChatService:
         try:
             # Check if any unread messages exist (faster than count)
             has_unread = Message.objects(
-                conversation_id=conversation_id, 
+                conversation_id=conversation_id_str, 
                 receiver_id=user_id, 
                 is_read=False
             ).limit(1).first() is not None
@@ -327,7 +331,7 @@ class ChatService:
             if has_unread:
                 # Perform bulk update (single operation)
                 Message.objects(
-                    conversation_id=conversation_id, 
+                    conversation_id=conversation_id_str, 
                     receiver_id=user_id, 
                     is_read=False
                 ).update(set__is_read=True)
