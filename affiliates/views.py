@@ -49,7 +49,31 @@ def request_cashout(request):
         if amount <= 0:
             return Response({'success': False, 'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
         
+        # Check for duplicate pending requests (idempotency check)
+        # Prevent multiple requests for the same amount within a short time window
         from affiliates.models import AffiliatePayoutRequest
+        from datetime import timedelta
+        
+        recent_duplicate = AffiliatePayoutRequest.objects(
+            affiliate_id=affiliate_id,
+            amount=amount,
+            status='pending',
+            requested_date__gte=datetime.utcnow() - timedelta(minutes=5)
+        ).first()
+        
+        if recent_duplicate:
+            return Response({
+                'success': False,
+                'error': 'A similar cashout request was recently submitted. Please wait or check your request history.',
+                'existingRequest': {
+                    'id': str(recent_duplicate.id),
+                    'amount': recent_duplicate.amount,
+                    'status': recent_duplicate.status,
+                    'requestedAt': recent_duplicate.requested_date.isoformat()
+                }
+            }, status=status.HTTP_409_CONFLICT)
+        
+        # Create payout request first (before deducting balance)
         payout = AffiliatePayoutRequest(
             affiliate_id=affiliate_id,
             affiliate_name=affiliate.full_name,
@@ -57,13 +81,29 @@ def request_cashout(request):
             payment_method=request.data.get('paymentMethod', 'Bank Transfer'),
             account_details=affiliate.account_number or ''
         )
-        payout.save()
         
-        # Deduct amount from pending_earnings (available balance) immediately
-        new_pending = max(0, pending - amount)
-        affiliate.pending_earnings = str(round(new_pending, 2))
-        affiliate.last_activity = datetime.utcnow()
-        affiliate.save()
+        try:
+            payout.save()
+        except Exception as e:
+            # If save fails, don't deduct balance
+            return Response({
+                'success': False,
+                'error': f'Failed to create cashout request: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Only deduct amount after successful payout request creation
+        try:
+            new_pending = max(0, pending - amount)
+            affiliate.pending_earnings = str(round(new_pending, 2))
+            affiliate.last_activity = datetime.utcnow()
+            affiliate.save()
+        except Exception as e:
+            # If balance update fails, delete the payout request to maintain consistency
+            payout.delete()
+            return Response({
+                'success': False,
+                'error': f'Failed to update balance: {str(e)}. Cashout request was not created.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response({
             'success': True,
@@ -80,6 +120,8 @@ def request_cashout(request):
                 'pendingEarnings': round(new_pending, 2)
             }
         }, status=status.HTTP_201_CREATED)
+    except ValueError as e:
+        return Response({'success': False, 'error': f'Invalid amount: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

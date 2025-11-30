@@ -121,7 +121,38 @@ def payment_webhook(request):
                 'error': 'Payment status not found in webhook data'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Update payment status using the service method
+        # Handle failed payments - don't process further, just return success to stop retries
+        if payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
+            logger.warning(f"Payment {payment_id} has status '{payment_status}' - marking as failed")
+            try:
+                # Try to update payment status to failed if payment exists
+                from payments.models import Payment
+                payment = Payment.objects(moyasar_payment_id=payment_id).first()
+                if payment:
+                    payment.status = 'failed'
+                    payment.save()
+                    logger.info(f"Payment {payment_id} marked as failed")
+                
+                # Try to update order status if exists
+                if payment and payment.order_id:
+                    payment.order_id.payment_status = 'failed'
+                    payment.order_id.save()
+                    logger.info(f"Order {payment.order_id.id} payment status marked as failed")
+            except Exception as e:
+                logger.error(f"Error updating failed payment: {str(e)}")
+            
+            # Return success to prevent Moyasar from retrying failed payments
+            return Response({
+                'success': True,
+                'message': f'Payment {payment_status} - no further processing needed',
+                'data': {
+                    'payment_id': payment_id,
+                    'status': payment_status,
+                    'updated': False
+                }
+            }, status=status.HTTP_200_OK)
+        
+        # Update payment status using the service method (only for successful payments)
         updated = MoyasarPaymentService.update_payment_status(payment_id, payment_status)
         logger.info(f"Payment status update result: {updated}")
         
