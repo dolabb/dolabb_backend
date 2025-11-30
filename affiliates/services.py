@@ -138,7 +138,7 @@ class AffiliateService:
     
     @staticmethod
     def get_payout_requests(page=1, limit=20, status_filter=None):
-        """Get affiliate payout requests"""
+        """Get affiliate payout requests (admin - all affiliates)"""
         query = AffiliatePayoutRequest.objects()
         
         if status_filter:
@@ -165,8 +165,38 @@ class AffiliateService:
         return requests_list, total
     
     @staticmethod
+    def get_affiliate_payout_requests(affiliate_id, page=1, limit=20, status_filter=None):
+        """Get payout requests for a specific affiliate"""
+        query = AffiliatePayoutRequest.objects(affiliate_id=affiliate_id)
+        
+        if status_filter:
+            query = query.filter(status=status_filter)
+        
+        total = query.count()
+        skip = (page - 1) * limit
+        requests = query.skip(skip).limit(limit).order_by('-requested_date')
+        
+        requests_list = []
+        for req in requests:
+            requests_list.append({
+                'id': str(req.id),
+                'affiliateId': str(req.affiliate_id.id),
+                'affiliateName': req.affiliate_name,
+                'amount': req.amount,
+                'requestedDate': req.requested_date.isoformat(),
+                'paymentMethod': req.payment_method,
+                'status': req.status,
+                'accountDetails': req.account_details,
+                'rejectionReason': req.rejection_reason,
+                'reviewedAt': req.reviewed_at.isoformat() if req.reviewed_at else None,
+                'reviewedBy': req.reviewed_by
+            })
+        
+        return requests_list, total
+    
+    @staticmethod
     def approve_payout(payout_id, admin_id):
-        """Approve affiliate payout"""
+        """Approve affiliate payout - move amount from pending to paid earnings"""
         payout = AffiliatePayoutRequest.objects(id=payout_id).first()
         if not payout:
             raise ValueError("Payout request not found")
@@ -177,19 +207,19 @@ class AffiliateService:
         payout.save()
         
         # Update affiliate earnings
+        # Note: Amount was already deducted from pending_earnings when request was created
+        # So we just need to add it to paid_earnings
         affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
         if affiliate:
             paid = float(affiliate.paid_earnings or 0) + payout.amount
-            pending = float(affiliate.pending_earnings or 0) - payout.amount
-            affiliate.paid_earnings = str(paid)
-            affiliate.pending_earnings = str(max(0, pending))
+            affiliate.paid_earnings = str(round(paid, 2))
             affiliate.save()
         
         return payout
     
     @staticmethod
     def reject_payout(payout_id, admin_id, reason):
-        """Reject affiliate payout"""
+        """Reject affiliate payout - refund amount back to pending_earnings"""
         payout = AffiliatePayoutRequest.objects(id=payout_id).first()
         if not payout:
             raise ValueError("Payout request not found")
@@ -199,6 +229,13 @@ class AffiliateService:
         payout.reviewed_at = datetime.utcnow()
         payout.reviewed_by = admin_id
         payout.save()
+        
+        # Refund amount back to pending_earnings (available balance)
+        affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
+        if affiliate:
+            pending = float(affiliate.pending_earnings or 0) + payout.amount
+            affiliate.pending_earnings = str(round(pending, 2))
+            affiliate.save()
         
         return payout
     

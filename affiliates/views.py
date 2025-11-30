@@ -1,6 +1,7 @@
 """
 Affiliate views
 """
+from datetime import datetime
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -32,7 +33,7 @@ def validate_affiliate_code(request):
 
 @api_view(['POST'])
 def request_cashout(request):
-    """Request affiliate cashout"""
+    """Request affiliate cashout - deducts amount from available balance immediately"""
     try:
         affiliate_id = str(request.user.id)
         amount = float(request.data.get('amount', 0))
@@ -45,6 +46,9 @@ def request_cashout(request):
         if amount > pending:
             return Response({'success': False, 'error': 'Insufficient pending earnings'}, status=status.HTTP_400_BAD_REQUEST)
         
+        if amount <= 0:
+            return Response({'success': False, 'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+        
         from affiliates.models import AffiliatePayoutRequest
         payout = AffiliatePayoutRequest(
             affiliate_id=affiliate_id,
@@ -55,14 +59,25 @@ def request_cashout(request):
         )
         payout.save()
         
+        # Deduct amount from pending_earnings (available balance) immediately
+        new_pending = max(0, pending - amount)
+        affiliate.pending_earnings = str(round(new_pending, 2))
+        affiliate.last_activity = datetime.utcnow()
+        affiliate.save()
+        
         return Response({
             'success': True,
+            'message': 'Cashout request submitted successfully. Amount deducted from available balance.',
             'cashoutRequest': {
                 'id': str(payout.id),
                 'affiliateId': str(affiliate_id),
                 'amount': amount,
                 'status': payout.status,
                 'requestedAt': payout.requested_date.isoformat()
+            },
+            'updatedBalance': {
+                'availableBalance': round(new_pending, 2),
+                'pendingEarnings': round(new_pending, 2)
             }
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
@@ -307,6 +322,41 @@ def get_my_transactions(request):
         return Response({
             'success': True,
             'transactions': transactions,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit,
+                'totalItems': total
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_my_cashout_requests(request):
+    """Get authenticated affiliate's own cashout request history"""
+    try:
+        affiliate = request.user
+        
+        # Verify user is an affiliate
+        if not affiliate or not hasattr(affiliate, 'affiliate_code'):
+            return Response({'success': False, 'error': 'Unauthorized. Affiliate access required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        affiliate_id = str(affiliate.id)
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        status_filter = request.GET.get('status')  # Optional: pending, approved, rejected
+        
+        requests, total = AffiliateService.get_affiliate_payout_requests(
+            affiliate_id=affiliate_id,
+            page=page,
+            limit=limit,
+            status_filter=status_filter
+        )
+        
+        return Response({
+            'success': True,
+            'cashoutRequests': requests,
             'pagination': {
                 'currentPage': page,
                 'totalPages': (total + limit - 1) // limit,

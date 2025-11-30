@@ -56,7 +56,8 @@ This endpoint returns:
 
 This endpoint returns:
 
-- ✅ **Time-Based Breakdown** - Earnings grouped by time period (daily, weekly, monthly, yearly) with:
+- ✅ **Time-Based Breakdown** - Earnings grouped by time period (daily, weekly,
+  monthly, yearly) with:
   - Period identifier and label
   - Total earnings per period
   - Pending earnings per period
@@ -75,6 +76,14 @@ const profile = await axios.get('/api/affiliate/profile/', {
 // Get earning breakdown
 const transactions = await axios.get(
   '/api/affiliate/transactions/?page=1&limit=20',
+  {
+    headers: { Authorization: `Bearer ${token}` },
+  }
+);
+
+// Get cashout request history
+const cashoutHistory = await axios.get(
+  '/api/affiliate/cashout-requests/?page=1&limit=20',
   {
     headers: { Authorization: `Bearer ${token}` },
   }
@@ -241,6 +250,7 @@ Get the authenticated affiliate's transaction history with earning breakdown.
 ---
 
 ### 4. Get Earnings Breakdown (Time-Based for Graphs)
+
 Get time-based earnings breakdown for trend analysis and graphs.
 
 **Endpoint:** `GET /api/affiliate/earnings-breakdown/`
@@ -249,10 +259,13 @@ Get time-based earnings breakdown for trend analysis and graphs.
 
 **Query Parameters:**
 
-- `period` (optional): Time period grouping - `daily`, `weekly`, `monthly`, `yearly` (default: `monthly`)
+- `period` (optional): Time period grouping - `daily`, `weekly`, `monthly`,
+  `yearly` (default: `monthly`)
 - `limit` (optional): Number of periods to return (default: 12)
-- `startDate` (optional): Start date filter in ISO format (e.g., `2024-01-01T00:00:00Z`)
-- `endDate` (optional): End date filter in ISO format (e.g., `2024-12-31T23:59:59Z`)
+- `startDate` (optional): Start date filter in ISO format (e.g.,
+  `2024-01-01T00:00:00Z`)
+- `endDate` (optional): End date filter in ISO format (e.g.,
+  `2024-12-31T23:59:59Z`)
 
 **Example:** `GET /api/affiliate/earnings-breakdown/?period=monthly&limit=12`
 
@@ -299,7 +312,8 @@ Get time-based earnings breakdown for trend analysis and graphs.
 **Period Format Examples:**
 
 - **Daily:** `period: "2025-11-15"`, `label: "November 15, 2025"`
-- **Weekly:** `period: "2025-11-10"` (Monday date), `label: "Week of November 10, 2025"`
+- **Weekly:** `period: "2025-11-10"` (Monday date),
+  `label: "Week of November 10, 2025"`
 - **Monthly:** `period: "2025-11"`, `label: "November 2025"`
 - **Yearly:** `period: "2025"`, `label: "2025"`
 
@@ -364,7 +378,7 @@ Update the authenticated affiliate's profile information.
 
 ### 6. Request Cashout
 
-Request a payout from pending earnings.
+Request a payout from pending earnings. **Note:** The amount is deducted from available balance immediately upon request.
 
 **Endpoint:** `POST /api/affiliate/cashout/`
 
@@ -384,15 +398,26 @@ Request a payout from pending earnings.
 ```json
 {
   "success": true,
+  "message": "Cashout request submitted successfully. Amount deducted from available balance.",
   "cashoutRequest": {
     "id": "507f1f77bcf86cd799439012",
     "affiliateId": "507f1f77bcf86cd799439011",
     "amount": 500.0,
     "status": "pending",
     "requestedAt": "2024-01-15T10:30:00.000Z"
+  },
+  "updatedBalance": {
+    "availableBalance": 0.25,
+    "pendingEarnings": 0.25
   }
 }
 ```
+
+**Important Notes:**
+
+- The requested amount is **immediately deducted** from `pending_earnings` (available balance)
+- If the payout is **approved**, the amount moves to `paid_earnings` (no further deduction needed)
+- If the payout is **rejected**, the amount is **refunded** back to `pending_earnings`
 
 **Error Response (400):**
 
@@ -414,9 +439,77 @@ Request a payout from pending earnings.
 
 ---
 
+### 7. Get My Cashout Request History
+
+Get the authenticated affiliate's cashout request history.
+
+**Endpoint:** `GET /api/affiliate/cashout-requests/`
+
+**Authentication:** Required (Affiliate)
+
+**Query Parameters:**
+
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `status` (optional): Filter by status - `pending`, `approved`, `rejected`
+
+**Example:** `GET /api/affiliate/cashout-requests/?page=1&limit=20&status=pending`
+
+**Success Response (200):**
+
+```json
+{
+  "success": true,
+  "cashoutRequests": [
+    {
+      "id": "507f1f77bcf86cd799439012",
+      "affiliateId": "507f1f77bcf86cd799439011",
+      "affiliateName": "John Doe",
+      "amount": 500.0,
+      "requestedDate": "2024-01-15T10:30:00.000Z",
+      "paymentMethod": "Bank Transfer",
+      "status": "pending",
+      "accountDetails": "123456789",
+      "rejectionReason": null,
+      "reviewedAt": null,
+      "reviewedBy": null
+    },
+    {
+      "id": "507f1f77bcf86cd799439013",
+      "affiliateId": "507f1f77bcf86cd799439011",
+      "affiliateName": "John Doe",
+      "amount": 300.0,
+      "requestedDate": "2024-01-10T08:00:00.000Z",
+      "paymentMethod": "Bank Transfer",
+      "status": "approved",
+      "accountDetails": "123456789",
+      "rejectionReason": null,
+      "reviewedAt": "2024-01-12T14:30:00.000Z",
+      "reviewedBy": "admin_user_id"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 2,
+    "totalItems": 15
+  }
+}
+```
+
+**Error Response (401):**
+
+```json
+{
+  "success": false,
+  "error": "Unauthorized. Affiliate access required."
+}
+```
+
+---
+
 ## Admin Endpoints
 
-### 7. Get All Affiliates
+### 8. Get All Affiliates
 
 Get a paginated list of all affiliates (admin only).
 
@@ -477,7 +570,7 @@ Get a paginated list of all affiliates (admin only).
 
 ---
 
-### 8. Get Affiliate Transactions (Admin)
+### 9. Get Affiliate Transactions (Admin)
 
 Get transaction history for a specific affiliate (admin only).
 
@@ -539,7 +632,7 @@ Get transaction history for a specific affiliate (admin only).
 
 ---
 
-### 9. Update Commission Rate
+### 10. Update Commission Rate
 
 Update an affiliate's commission rate (admin only).
 
@@ -592,7 +685,7 @@ Update an affiliate's commission rate (admin only).
 
 ---
 
-### 10. Suspend Affiliate
+### 11. Suspend Affiliate
 
 Suspend/deactivate an affiliate (admin only).
 
@@ -633,7 +726,7 @@ Suspend/deactivate an affiliate (admin only).
 
 ---
 
-### 11. Get Payout Requests
+### 12. Get Payout Requests (Admin)
 
 Get all affiliate payout requests (admin only).
 
@@ -687,7 +780,7 @@ Get all affiliate payout requests (admin only).
 
 ---
 
-### 12. Approve Payout Request
+### 13. Approve Payout Request
 
 Approve an affiliate payout request (admin only).
 
@@ -710,7 +803,7 @@ Approve an affiliate payout request (admin only).
 
 **Note:** When a payout is approved:
 
-- The payout amount is moved from `pending_earnings` to `paid_earnings`
+- The payout amount is added to `paid_earnings` (amount was already deducted from `pending_earnings` when request was created)
 - The payout status is updated to `approved`
 - The `reviewed_at` and `reviewed_by` fields are set
 
@@ -734,7 +827,7 @@ Approve an affiliate payout request (admin only).
 
 ---
 
-### 13. Reject Payout Request
+### 14. Reject Payout Request
 
 Reject an affiliate payout request (admin only).
 
@@ -768,7 +861,7 @@ Reject an affiliate payout request (admin only).
 - The payout status is updated to `rejected`
 - The `rejection_reason` is saved
 - The `reviewed_at` and `reviewed_by` fields are set
-- The pending earnings remain unchanged (not deducted)
+- **The amount is refunded back to `pending_earnings`** (available balance) since it was deducted when the request was created
 
 **Error Response (404):**
 
@@ -888,9 +981,10 @@ See the authentication API documentation for details.
    - Transaction status remains `pending` until buyer reviews AND seller uploads
      shipment proof
    - When transaction is fully completed, status changes to `paid`
-   - Payout requests can only be made from `pending_earnings`
-   - When payout is approved, amount moves from `pending_earnings` to
-     `paid_earnings`
+   - Payout requests can only be made from `pending_earnings` (available balance)
+   - **When payout is requested, amount is immediately deducted from `pending_earnings`**
+   - When payout is **approved**, amount is added to `paid_earnings` (no further deduction)
+   - When payout is **rejected**, amount is **refunded back to `pending_earnings`**
 
 2. **Commission Rate:**
 

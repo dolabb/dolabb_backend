@@ -7,6 +7,7 @@ from affiliates import views
 urlpatterns = [
     path('validate-code/', views.validate_affiliate_code, name='validate_affiliate_code'),
     path('cashout/', views.request_cashout, name='request_cashout'),
+    path('cashout-requests/', views.get_my_cashout_requests, name='get_my_cashout_requests'),  # Affiliate's own cashout history
     path('profile/', views.affiliate_profile, name='affiliate_profile'),
     path('transactions/', views.get_my_transactions, name='get_my_transactions'),  # Affiliate's own transactions
     path('earnings-breakdown/', views.get_earnings_breakdown, name='get_earnings_breakdown'),  # Time-based earnings breakdown for graphs
