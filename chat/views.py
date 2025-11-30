@@ -1,11 +1,14 @@
 """
 Chat views
 """
+import logging
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from chat.services import ChatService
 from authentication.models import User
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
@@ -95,30 +98,71 @@ def send_message(request):
 
 @api_view(['POST'])
 def upload_file(request):
-    """Upload file for chat"""
+    """Upload file for chat - uses VPS storage if enabled, otherwise local storage"""
     try:
         if 'file' not in request.FILES:
             return Response({'success': False, 'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
         file = request.FILES['file']
-        # Save file (simplified - should use proper file storage)
         import os
+        import uuid
         from django.conf import settings
         
-        upload_dir = os.path.join(settings.MEDIA_ROOT, 'chat')
-        os.makedirs(upload_dir, exist_ok=True)
+        # Generate unique filename to avoid conflicts
+        file_extension = os.path.splitext(file.name)[1] if '.' in file.name else ''
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
         
-        file_path = os.path.join(upload_dir, file.name)
-        with open(file_path, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
+        # Read file content as bytes
+        file_content = b''
+        for chunk in file.chunks():
+            file_content += chunk
         
-        file_url = f"{settings.MEDIA_URL}chat/{file.name}"
+        # Try to upload to VPS if configured, otherwise use local storage
+        vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+        file_url = None
+        storage_type = 'local'
+        
+        if vps_enabled:
+            # Upload to VPS
+            try:
+                from storage.vps_helper import upload_file_to_vps
+                success, result = upload_file_to_vps(
+                    file_content,
+                    'uploads/chat',
+                    unique_filename
+                )
+                
+                if success:
+                    file_url = result
+                    storage_type = 'vps'
+                    logger.info(f"Chat file successfully uploaded to VPS: {file_url}")
+                else:
+                    # VPS upload failed, fallback to local storage
+                    logger.warning(f"VPS upload failed for chat file: {result}. Falling back to local storage.")
+                    vps_enabled = False  # Force local storage fallback
+            except Exception as e:
+                logger.error(f"Error uploading chat file to VPS: {str(e)}. Falling back to local storage.")
+                vps_enabled = False  # Force local storage fallback
+        
+        # Fallback to local storage if VPS is disabled or upload failed
+        if not vps_enabled or not file_url:
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'chat')
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(upload_dir, unique_filename)
+            with open(file_path, 'wb+') as destination:
+                destination.write(file_content)
+            
+            file_url = f"{settings.MEDIA_URL}chat/{unique_filename}"
+            storage_type = 'local'
+            logger.info(f"Chat file saved to local storage: {file_url}")
         
         return Response({
             'success': True,
-            'fileUrl': file_url
+            'fileUrl': file_url,
+            'storageType': storage_type
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
+        logger.error(f"Error uploading chat file: {str(e)}", exc_info=True)
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
