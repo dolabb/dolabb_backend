@@ -66,7 +66,12 @@ class ChatService:
     
     @staticmethod
     def get_messages(conversation_id, user_id, page=1, limit=50):
-        """Get messages for a conversation - Highly Optimized version"""
+        """Get messages for a conversation - Aggregates messages from ALL conversations between participants
+        
+        This method aggregates messages from all conversations between the two participants
+        because messages can be split across multiple conversations (e.g., product-specific vs general chat).
+        This ensures all messages (text, offers, images) between users are returned together.
+        """
         # Only fetch minimal fields from conversation to avoid loading full objects
         conversation = Conversation.objects(id=conversation_id).only('participants', 'unread_count_sender', 'unread_count_receiver').first()
         if not conversation:
@@ -79,11 +84,24 @@ class ChatService:
         
         # Get messages with only required fields to prevent ReferenceField auto-dereferencing
         # Order by created_at DESC (newest first) - Page 1 = most recent messages
-        # Ensure conversation_id is string for proper comparison
-        conversation_id_str = str(conversation_id)
+        # Extract participant IDs - these are the two users in the conversation
+        participant_ids = [str(p.id) for p in conversation.participants]
+        if len(participant_ids) != 2:
+            raise ValueError("Invalid conversation: must have exactly 2 participants")
+        
+        # Query ALL messages between these two participants (regardless of conversation_id)
+        # This aggregates messages from all conversations between the users
+        # This fixes the issue where messages are split across multiple conversations
+        # (e.g., product-specific conversations vs general chat)
         skip = (page - 1) * limit
-        # Query ALL message types (text, offer, image) - no filtering by message_type
-        messages_queryset = Message.objects(conversation_id=conversation_id_str).only(
+        
+        # Build query: messages where (sender=user1 AND receiver=user2) OR (sender=user2 AND receiver=user1)
+        # This gets all messages between the two participants from ANY conversation
+        from mongoengine import Q
+        messages_queryset = Message.objects(
+            (Q(sender_id=participant_ids[0]) & Q(receiver_id=participant_ids[1])) |
+            (Q(sender_id=participant_ids[1]) & Q(receiver_id=participant_ids[0]))
+        ).only(
             'id', 'text', 'sender_id', 'receiver_id', 'offer_id', 'product_id', 
             'message_type', 'attachments', 'created_at', 'is_read', 'conversation_id'
         ).order_by('-created_at').skip(skip).limit(limit)
@@ -92,10 +110,16 @@ class ChatService:
         # For exact count, use count(), but estimated_count() is faster for large datasets
         try:
             # Try to get exact count efficiently - count ALL message types (text, offer, image)
-            total = Message.objects(conversation_id=conversation_id_str).count()
+            total = Message.objects(
+                (Q(sender_id=participant_ids[0]) & Q(receiver_id=participant_ids[1])) |
+                (Q(sender_id=participant_ids[1]) & Q(receiver_id=participant_ids[0]))
+            ).count()
         except Exception:
             # Fallback to 0 if count fails
             total = 0
+        
+        # Keep conversation_id_str for response consistency
+        conversation_id_str = str(conversation_id)
         
         # Convert to list and extract IDs - using pattern from codebase
         from bson import ObjectId
@@ -232,7 +256,7 @@ class ChatService:
                 'text': msg.text or '',
                 'senderId': sender_id,
                 'receiverId': receiver_id,
-                'conversationId': conversation_id_str,  # Include conversationId for consistency
+                'conversationId': str(msg.conversation_id) if hasattr(msg, 'conversation_id') and msg.conversation_id else conversation_id_str,  # Include actual conversationId from message
                 'isSender': is_sender,
                 'sender': 'me' if is_sender else 'other',
                 'senderName': sender.full_name if sender else None,
@@ -319,21 +343,24 @@ class ChatService:
             messages_list.append(message_data)
         
         # Mark-as-read operation - optimized to use exists() instead of count()
-        # This is faster as it stops after finding first match
+        # Mark messages as read across ALL conversations between participants
         try:
             # Check if any unread messages exist (faster than count)
+            from mongoengine import Q
             has_unread = Message.objects(
-                conversation_id=conversation_id_str, 
-                receiver_id=user_id, 
-                is_read=False
+                ((Q(sender_id=participant_ids[0]) & Q(receiver_id=participant_ids[1])) |
+                 (Q(sender_id=participant_ids[1]) & Q(receiver_id=participant_ids[0]))) &
+                Q(receiver_id=user_id) &
+                Q(is_read=False)
             ).limit(1).first() is not None
             
             if has_unread:
-                # Perform bulk update (single operation)
+                # Perform bulk update (single operation) - mark all unread messages between participants as read
                 Message.objects(
-                    conversation_id=conversation_id_str, 
-                    receiver_id=user_id, 
-                    is_read=False
+                    ((Q(sender_id=participant_ids[0]) & Q(receiver_id=participant_ids[1])) |
+                     (Q(sender_id=participant_ids[1]) & Q(receiver_id=participant_ids[0]))) &
+                    Q(receiver_id=user_id) &
+                    Q(is_read=False)
                 ).update(set__is_read=True)
                 
                 # Update unread count in conversation (only if needed)
