@@ -286,6 +286,10 @@ def get_product_detail(request, product_id):
         if product.affiliate_code:
             product_data['Affiliate Code (Optional)'] = product.affiliate_code
         
+        # Add tax percentage only if it exists
+        if product.tax_percentage is not None:
+            product_data['Tax Percentage'] = product.tax_percentage
+        
         return Response(product_data, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
@@ -349,6 +353,10 @@ def create_product(request):
             # Add affiliate code only if it exists
             if product.affiliate_code:
                 product_dict['Affiliate Code (Optional)'] = product.affiliate_code
+            
+            # Add tax percentage only if it exists
+            if product.tax_percentage is not None:
+                product_dict['Tax Percentage'] = product.tax_percentage
             
             products.append(product_dict)
         
@@ -418,6 +426,10 @@ def update_product(request, product_id):
         # Add affiliate code only if it exists
         if product.affiliate_code:
             product_data['Affiliate Code (Optional)'] = product.affiliate_code
+        
+        # Add tax percentage only if it exists
+        if product.tax_percentage is not None:
+            product_data['Tax Percentage'] = product.tax_percentage
         
         return Response({
             'success': True,

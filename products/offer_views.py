@@ -201,22 +201,28 @@ def get_order_summary(request, offer_id):
         user_id = str(request.user.id)
         summary = OfferService.get_order_summary(offer_id, user_id)
         
+        order_summary = {
+            'productTitle': summary['product']['title'],
+            'productImage': summary['product']['image'],
+            'originalPrice': summary['originalPrice'],
+            'offerPrice': summary['offerPrice'],
+            'shippingPrice': summary['shippingPrice'],
+            'platformFee': summary['platformFee'],
+            'finalTotal': summary['finalTotal']
+        }
+        
+        # Only include tax if it exists in the summary
+        if 'vat' in summary and summary['vat']:
+            vat_percentage = summary['vat']['percentage']
+            order_summary['platformTax'] = {
+                'label': f'Tax (VAT {vat_percentage}%)',
+                'percentage': vat_percentage,
+                'amount': summary['vat']['amount']
+            }
+        
         return Response({
             'success': True,
-            'orderSummary': {
-                'productTitle': summary['product']['title'],
-                'productImage': summary['product']['image'],
-                'originalPrice': summary['originalPrice'],
-                'offerPrice': summary['offerPrice'],
-                'shippingPrice': summary['shippingPrice'],
-                'platformFee': summary['platformFee'],
-                'platformTax': {
-                    'label': 'Tax (VAT 15%)',
-                    'percentage': summary['vat']['percentage'],
-                    'amount': summary['vat']['amount']
-                },
-                'finalTotal': summary['finalTotal']
-            }
+            'orderSummary': order_summary
         }, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

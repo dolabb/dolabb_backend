@@ -154,6 +154,16 @@ class ProductService:
             processing_time_days=int(data.get('Processing Time (days)', 7))
         )
         
+        # Set tax percentage if provided (optional field)
+        tax_percentage = data.get('Tax Percentage', data.get('taxPercentage', None))
+        if tax_percentage is not None:
+            try:
+                product.tax_percentage = float(tax_percentage)
+            except (ValueError, TypeError):
+                product.tax_percentage = None
+        else:
+            product.tax_percentage = None
+        
         # Set affiliate code only if provided and not empty
         affiliate_code = data.get('Affiliate Code (Optional)', '').strip() if data.get('Affiliate Code (Optional)') else ''
         if affiliate_code:
@@ -530,6 +540,15 @@ class ProductService:
             affiliate_code = data['Affiliate Code (Optional)']
             # Only set if provided and not empty
             product.affiliate_code = affiliate_code if affiliate_code and affiliate_code.strip() else None
+        if 'Tax Percentage' in data or 'taxPercentage' in data:
+            tax_percentage = data.get('Tax Percentage', data.get('taxPercentage', None))
+            if tax_percentage is not None:
+                try:
+                    product.tax_percentage = float(tax_percentage)
+                except (ValueError, TypeError):
+                    product.tax_percentage = None
+            else:
+                product.tax_percentage = None
         
         # Update shipping_info if shipping fields are provided
         if 'Shipping Cost' in data or 'Processing Time (days)' in data or 'Shipping Locations' in data:
@@ -1010,14 +1029,17 @@ class OfferService:
         # Calculate subtotal (offer price + shipping + platform fee)
         subtotal = offer_price + shipping_price + platform_fee
         
-        # Calculate VAT (15% of subtotal)
-        vat_percentage = 15.0
-        vat_amount = round(subtotal * (vat_percentage / 100.0), 2)
+        # Calculate VAT/Tax if product has tax_percentage set
+        vat_percentage = None
+        vat_amount = 0.0
+        if product.tax_percentage is not None and product.tax_percentage > 0:
+            vat_percentage = float(product.tax_percentage)
+            vat_amount = round(subtotal * (vat_percentage / 100.0), 2)
         
-        # Calculate final total (subtotal + VAT)
+        # Calculate final total (subtotal + VAT if tax exists)
         final_total = round(subtotal + vat_amount, 2)
         
-        return {
+        result = {
             'product': {
                 'id': str(product.id),
                 'title': product.title,
@@ -1027,13 +1049,18 @@ class OfferService:
             'offerPrice': offer_price,
             'shippingPrice': shipping_price,
             'platformFee': platform_fee,
-            'vat': {
-                'percentage': vat_percentage,
-                'amount': vat_amount
-            },
             'subtotal': round(subtotal, 2),
             'finalTotal': final_total
         }
+        
+        # Only include VAT in response if tax is applied
+        if vat_percentage is not None and vat_percentage > 0:
+            result['vat'] = {
+                'percentage': vat_percentage,
+                'amount': vat_amount
+            }
+        
+        return result
 
 
 class OrderService:
@@ -1594,3 +1621,4 @@ class ReviewService:
             'total_reviews': total_reviews,
             'rating_distribution': rating_distribution
         }
+

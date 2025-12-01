@@ -40,6 +40,7 @@ class Product(Document):
     shipping_cost = FloatField(default=0.0)
     processing_time_days = IntField(default=7)
     affiliate_code = StringField(max_length=50)
+    tax_percentage = FloatField(default=None, null=True)  # Tax percentage (e.g., 15.0 for 15%), optional
     likes_count = IntField(default=0)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
