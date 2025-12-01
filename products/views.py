@@ -5,8 +5,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from products.services import ProductService, OfferService, OrderService
-from products.models import Product, SavedProduct
+from products.services import ProductService, OfferService, OrderService, ReviewService
+from products.models import Product, SavedProduct, Order
 from authentication.models import User
 
 
@@ -214,6 +214,27 @@ def get_product_detail(request, product_id):
                 'locations': product.shipping_info.locations
             }
         
+        # Calculate seller rating and total sales
+        seller_rating = 0
+        total_sales = 0
+        
+        if seller:
+            try:
+                # Get seller rating statistics
+                rating_stats = ReviewService.get_seller_rating_stats(str(seller.id))
+                seller_rating = rating_stats.get('average_rating', 0)
+                
+                # Count total completed sales for the seller
+                # Use seller.id directly - MongoEngine handles ObjectId conversion
+                total_sales = Order.objects(
+                    seller_id=seller.id,
+                    payment_status='completed'
+                ).count()
+            except Exception as e:
+                # If calculation fails, keep defaults (0)
+                seller_rating = 0
+                total_sales = 0
+        
         # Build product data - matching create/update response structure
         product_data = {
             'id': str(product.id),
@@ -248,8 +269,8 @@ def get_product_detail(request, product_id):
                 'id': str(seller.id) if seller else '',
                 'username': seller.username if seller else '',
                 'profileImage': seller.profile_image if seller else '',
-                'rating': 0,  # TODO: Add rating system
-                'totalSales': 0  # TODO: Calculate total sales
+                'rating': seller_rating,
+                'totalSales': total_sales
             },
             'likes': product.likes_count,
             'isLiked': is_liked,
