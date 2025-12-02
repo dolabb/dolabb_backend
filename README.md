@@ -1,15 +1,22 @@
 # Dolabb Backend API
 
-A comprehensive Django REST API backend for Dolabb, a modern marketplace platform supporting multi-user roles (Admin, Buyers, Sellers, Affiliates) with real-time chat, payment processing, and affiliate management.
+A comprehensive Django REST API backend for Dolabb, a modern marketplace
+platform supporting multi-user roles (Admin, Buyers, Sellers, Affiliates) with
+real-time chat, payment processing, and affiliate management.
 
 ## 🚀 Features
 
 ### Core Functionality
-- **Multi-Role Authentication**: Admin, Buyer, Seller, and Affiliate user types with JWT-based authentication
+
+- **Multi-Role Authentication**: Admin, Buyer, Seller, and Affiliate user types
+  with JWT-based authentication
 - **OTP Verification**: Email-based OTP verification using Resend API
-- **Admin Dashboard**: Comprehensive admin panel with analytics, user management, and system monitoring
-- **Product Management**: Full CRUD operations for listings with approval workflow
-- **Real-Time Chat**: WebSocket-based messaging system for buyer-seller communication
+- **Admin Dashboard**: Comprehensive admin panel with analytics, user
+  management, and system monitoring
+- **Product Management**: Full CRUD operations for listings with approval
+  workflow
+- **Real-Time Chat**: WebSocket-based messaging system for buyer-seller
+  communication
 - **Payment Processing**: Integration with Moyasar payment gateway
 - **Affiliate System**: Complete affiliate management with commission tracking
 - **Notification System**: Real-time notifications via WebSocket
@@ -17,6 +24,7 @@ A comprehensive Django REST API backend for Dolabb, a modern marketplace platfor
 - **Cashout Requests**: Seller payout request management
 
 ### Technical Features
+
 - **MongoDB Database**: NoSQL database using MongoEngine ODM
 - **RESTful API**: Clean REST API architecture
 - **WebSocket Support**: Real-time communication using Django Channels
@@ -71,44 +79,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Environment Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-# Resend (email OTP)
-RESEND_API_KEY=your_resend_api_key
-RESEND_FROM_EMAIL=no-reply@dolabb.com
-
-# MongoDB
-MONGODB_CONNECTION_STRING=mongodb+srv://username:password@cluster.mongodb.net/dolabb_db?retryWrites=true&w=majority
-
-# JWT
-SECRET_KEY=your_jwt_secret_key_here
-JWT_EXPIRES_IN=7d
-OTP_EXPIRY_SECONDS=300
-PAGE_DEFAULT_LIMIT=20
-
-# Moyasar Payment Gateway
-MOYASAR_PUBLIC_KEY=your_moyasar_public_key
-MOYASAR_SECRET_KEY=your_moyasar_secret_key
-
-# Redis (for WebSockets)
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-
-# VPS Storage (Optional - for GoDaddy VPS)
-VPS_ENABLED=False
-VPS_HOST=your_vps_host
-VPS_PORT=22
-VPS_USERNAME=your_vps_username
-VPS_PASSWORD=your_vps_password
-VPS_KEY_PATH=path_to_ssh_key
-VPS_BASE_PATH=/home/dolabbadmin/public_html/media
-VPS_BASE_URL=https://www.dolabb.com/media
-```
-
-### 5. Run Setup Script (Optional)
+### 4. Run Setup Script (Optional)
 
 ```bash
 python setup.py
@@ -116,13 +87,13 @@ python setup.py
 
 This will create a `.env` file template and check Redis connection.
 
-### 6. Run Migrations
+### 5. Run Migrations
 
 ```bash
 python manage.py migrate
 ```
 
-### 7. Create Superuser (Optional)
+### 6. Create Superuser (Optional)
 
 ```bash
 python manage.py createsuperuser
@@ -150,38 +121,6 @@ gunicorn dolabb_backend.wsgi:application --bind 0.0.0.0:8000
 daphne -b 0.0.0.0 -p 8000 dolabb_backend.asgi:application
 ```
 
-## 📡 API Endpoints
-
-### Base URL
-```
-https://dolabb-backend-2vsj.onrender.com
-```
-
-### Main Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `/api/auth/` | Authentication (Admin, User, Affiliate) |
-| `/api/admin/` | Admin Dashboard APIs |
-| `/api/products/` | Product/Listing Management |
-| `/api/chat/` | Chat/Messaging APIs |
-| `/api/offers/` | Offer Management |
-| `/api/payments/` | Payment Processing |
-| `/api/user/` | User-specific Product Operations |
-| `/api/seller/` | Seller-specific Operations |
-| `/api/affiliate/` | Affiliate Management |
-| `/api/notifications/` | Notification Management |
-| `/ws/chat/{conversation_id}/` | WebSocket Chat |
-| `/ws/notifications/{user_id}/` | WebSocket Notifications |
-
-### API Root
-
-Visit the root endpoint to see all available endpoints:
-
-```bash
-GET /
-```
-
 ## 🏗️ Project Structure
 
 ```
@@ -202,7 +141,8 @@ backend/
 
 ## 🔐 Authentication
 
-All endpoints (except authentication endpoints) require JWT token in the Authorization header:
+All endpoints (except authentication endpoints) require JWT token in the
+Authorization header:
 
 ```
 Authorization: Bearer <your_jwt_token>
@@ -218,12 +158,14 @@ Authorization: Bearer <your_jwt_token>
 ## 📦 Key Modules
 
 ### Authentication Module
+
 - User signup/login with OTP verification
 - Password reset functionality
 - JWT token generation and validation
 - Multi-role support
 
 ### Admin Dashboard Module
+
 - Dashboard statistics and analytics
 - User management (suspend, deactivate, reactivate)
 - Listing approval workflow
@@ -233,6 +175,7 @@ Authorization: Bearer <your_jwt_token>
 - Fee settings configuration
 
 ### Products Module
+
 - Product CRUD operations
 - Category management
 - Offer system
@@ -240,17 +183,20 @@ Authorization: Bearer <your_jwt_token>
 - Search and filtering
 
 ### Chat Module
+
 - Real-time messaging via WebSocket
 - File upload support
 - Conversation management
 - Online user status
 
 ### Payments Module
+
 - Moyasar payment integration
 - Transaction tracking
 - Order management
 
 ### Affiliates Module
+
 - Affiliate registration
 - Commission tracking
 - Payout requests
@@ -272,6 +218,7 @@ The project includes `render.yaml` for easy deployment on Render.com.
 ### Environment Variables
 
 Ensure all environment variables are set in your deployment platform:
+
 - MongoDB connection string
 - Resend API key
 - JWT secret key
@@ -280,11 +227,13 @@ Ensure all environment variables are set in your deployment platform:
 
 ### Production Settings
 
-Use `settings_production.py` for production deployment with appropriate security configurations.
+Use `settings_production.py` for production deployment with appropriate security
+configurations.
 
 ## 📝 API Documentation
 
 For detailed API documentation, refer to the Postman collection:
+
 - `Dolabb_Backend_API.postman_collection.json`
 
 ## 🤝 Contributing
@@ -310,4 +259,3 @@ For support, email support@dolabb.com or open an issue in the repository.
 ---
 
 **Built with ❤️ for Dolabb Marketplace**
-
