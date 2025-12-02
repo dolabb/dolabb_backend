@@ -10,8 +10,11 @@ urlpatterns = [
     # Admin auth
     path('admin/signup/', views.admin_signup, name='admin_signup'),
     path('admin/login/', views.admin_login, name='admin_login'),
+    path('admin/logout/', views.admin_logout, name='admin_logout'),
     path('admin/verify-otp/', admin_verify_otp, name='admin_verify_otp'),
+    path('admin/resend-otp/', views.admin_resend_otp, name='admin_resend_otp'),
     path('admin/forgot-password/', views.admin_forgot_password, name='admin_forgot_password'),
+    path('admin/resend-forgot-password-otp/', views.admin_resend_forgot_password_otp, name='admin_resend_forgot_password_otp'),
     path('admin/reset-password/', views.admin_reset_password, name='admin_reset_password'),
     
     # User auth

@@ -147,9 +147,14 @@ class AuthService:
     
     @staticmethod
     def admin_signup(name, email, password, confirm_password, profile_image_url=None, request=None):
-        """Admin signup"""
+        """Admin signup - Only one admin allowed"""
         if password != confirm_password:
             raise ValueError("Passwords do not match")
+        
+        # Check if any admin already exists (only one admin allowed)
+        existing_admin = Admin.objects().first()
+        if existing_admin:
+            raise ValueError("Admin account already exists. Only one admin is allowed.")
         
         if Admin.objects(email=email).first():
             raise ValueError("Admin with this email already exists")

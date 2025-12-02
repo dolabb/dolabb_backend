@@ -128,6 +128,61 @@ def admin_reset_password(request):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['POST'])
+def admin_logout(request):
+    """Admin logout - invalidates token on client side"""
+    # Since JWT tokens are stateless, we can't invalidate them server-side
+    # without implementing a token blacklist. For now, this endpoint serves
+    # as a signal to the client to remove the token.
+    # In production, consider implementing token blacklist or refresh tokens.
+    return Response({
+        'success': True,
+        'message': 'Logged out successfully. Please remove the token from client storage.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_resend_otp(request):
+    """Resend OTP for admin signup"""
+    serializer = AdminForgotPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        otp = AuthService.admin_resend_otp(serializer.validated_data['email'])
+        return Response({
+            'success': True,
+            'message': 'OTP resent successfully',
+            'otp': otp
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_resend_forgot_password_otp(request):
+    """Resend OTP for admin forgot password"""
+    serializer = AdminForgotPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        otp = AuthService.admin_forgot_password(serializer.validated_data['email'])
+        return Response({
+            'success': True,
+            'message': 'Reset OTP resent successfully',
+            'otp': otp
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # User Authentication
 @api_view(['POST'])
 @permission_classes([AllowAny])

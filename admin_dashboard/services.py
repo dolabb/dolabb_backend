@@ -58,6 +58,27 @@ class DashboardService:
         }
     
     @staticmethod
+    def get_recent_activities(limit=10, activity_type=None):
+        """Get recent activities"""
+        query = ActivityLog.objects()
+        
+        if activity_type:
+            query = query.filter(activity_type=activity_type)
+        
+        activities = query.order_by('-date').limit(limit)
+        
+        activities_list = []
+        for activity in activities:
+            activities_list.append({
+                'id': str(activity.id),
+                'type': activity.activity_type,
+                'details': activity.details,
+                'date': activity.date.isoformat()
+            })
+        
+        return activities_list
+    
+    @staticmethod
     def get_revenue_trends():
         """Get revenue and users trends"""
         # Get monthly revenue for last 12 months
@@ -243,6 +264,58 @@ class UserManagementService:
         user.delete()
         
         return True
+    
+    @staticmethod
+    def get_user_details(user_id):
+        """Get user details"""
+        user = User.objects(id=user_id).first()
+        if not user:
+            raise ValueError("User not found")
+        
+        # Calculate activity
+        orders = Order.objects(buyer_id=user.id)
+        total_orders = orders.count()
+        total_spent = sum(order.total_price for order in orders)
+        
+        # Get activity history (recent orders)
+        recent_orders = orders.order_by('-created_at').limit(10)
+        activity_history = [{
+            'action': 'order_placed',
+            'date': order.created_at.isoformat(),
+            'details': f"Order #{str(order.id)[:8]} - {order.product_title or 'Product'}"
+        } for order in recent_orders]
+        
+        return {
+            'id': str(user.id),
+            'name': user.full_name,
+            'username': user.username,
+            'email': user.email,
+            'phone': user.phone,
+            'role': user.role,
+            'status': user.status,
+            'profile_image': user.profile_image or '',
+            'created_at': user.join_date.isoformat() if hasattr(user, 'join_date') and user.join_date else (user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None),
+            'last_login': None,  # Add if available in User model
+            'total_orders': total_orders,
+            'total_spent': total_spent,
+            'account_verified': user.status == 'active',
+            'activity_history': activity_history
+        }
+    
+    @staticmethod
+    def reactivate_user(user_id, reason=None):
+        """Reactivate user"""
+        user = User.objects(id=user_id).first()
+        if not user:
+            raise ValueError("User not found")
+        
+        if user.status == 'active':
+            raise ValueError("User is already active")
+        
+        user.status = 'active'
+        user.save()
+        
+        return user
 
 
 class ListingManagementService:
@@ -358,6 +431,53 @@ class TransactionService:
             })
         
         return transactions_list, total
+    
+    @staticmethod
+    def get_transaction_details(transaction_id):
+        """Get transaction details"""
+        transaction = Order.objects(id=transaction_id).first()
+        if not transaction:
+            raise ValueError("Transaction not found")
+        
+        buyer = User.objects(id=transaction.buyer_id.id).first()
+        seller = User.objects(id=transaction.seller_id.id).first()
+        product = Product.objects(id=transaction.product_id.id).first()
+        
+        # Calculate fees breakdown
+        fees_breakdown = {
+            'platform_fee': transaction.dolabb_fee or 0.0,
+            'payment_processing_fee': 0.0,  # Add if available
+            'affiliate_commission': transaction.affiliate_commission or 0.0
+        }
+        
+        return {
+            'id': str(transaction.id),
+            'order_id': f"ORD-{str(transaction.id)[:8]}",
+            'buyer': {
+                'id': str(transaction.buyer_id.id),
+                'name': transaction.buyer_name or (buyer.full_name if buyer else ''),
+                'email': buyer.email if buyer else ''
+            },
+            'seller': {
+                'id': str(transaction.seller_id.id),
+                'name': transaction.seller_name or (seller.full_name if seller else ''),
+                'email': seller.email if seller else ''
+            },
+            'item': {
+                'id': str(transaction.product_id.id),
+                'title': transaction.product_title or (product.title if product else ''),
+                'price': transaction.price or 0.0
+            },
+            'amount': transaction.total_price or 0.0,
+            'shipping_cost': transaction.shipping_cost or 0.0,
+            'platform_fee': transaction.dolabb_fee or 0.0,
+            'seller_payout': transaction.seller_payout or 0.0,
+            'status': transaction.status,
+            'payment_method': 'credit_card',  # Add if available in Order model
+            'created_at': transaction.created_at.isoformat(),
+            'completed_at': transaction.updated_at.isoformat() if transaction.status == 'delivered' else None,
+            'fees_breakdown': fees_breakdown
+        }
 
 
 class CashoutService:
@@ -420,6 +540,46 @@ class CashoutService:
         cashout.save()
         
         return cashout
+    
+    @staticmethod
+    def get_cashout_details(cashout_id):
+        """Get cashout request details"""
+        cashout = CashoutRequest.objects(id=cashout_id).first()
+        if not cashout:
+            raise ValueError("Cashout request not found")
+        
+        seller = User.objects(id=cashout.seller_id.id).first()
+        
+        # Get transaction history for this seller
+        orders = Order.objects(seller_id=cashout.seller_id.id, payment_status='completed').order_by('-created_at').limit(10)
+        transaction_history = [{
+            'order_id': f"ORD-{str(order.id)[:8]}",
+            'amount': order.seller_payout or 0.0,
+            'date': order.created_at.isoformat()
+        } for order in orders]
+        
+        return {
+            'id': str(cashout.id),
+            'seller': {
+                'id': str(cashout.seller_id.id),
+                'name': cashout.seller_name or (seller.full_name if seller else ''),
+                'email': seller.email if seller else ''
+            },
+            'amount': cashout.amount,
+            'status': cashout.status,
+            'payment_method': cashout.payment_method if hasattr(cashout, 'payment_method') else 'Bank Transfer',
+            'account_details': {
+                'account_details': cashout.account_details or '',
+                'bank_name': '',  # Add if available
+                'account_number': '',  # Add if available
+                'routing_number': ''  # Add if available
+            },
+            'requested_at': cashout.requested_date.isoformat(),
+            'processed_at': cashout.reviewed_at.isoformat() if cashout.reviewed_at else None,
+            'processed_by': cashout.reviewed_by or None,
+            'rejection_reason': cashout.rejection_reason or None,
+            'transaction_history': transaction_history
+        }
 
 
 class FeeSettingsService:
@@ -501,6 +661,40 @@ class FeeSettingsService:
                 'to': to_date.isoformat() if to_date else None
             },
             'Average Fee per Transaction': avg_fee
+        }
+    
+    @staticmethod
+    def calculate_fee(amount):
+        """Calculate fee for a given transaction amount"""
+        settings = FeeSettings.objects().first()
+        if not settings:
+            settings = FeeSettings()
+            settings.save()
+        
+        # Calculate fee based on settings
+        base_fee = float(amount) * (settings.fee_percentage / 100.0)
+        
+        # Apply minimum and maximum
+        if base_fee < settings.minimum_fee:
+            base_fee = settings.minimum_fee
+        elif base_fee > settings.maximum_fee:
+            base_fee = settings.maximum_fee
+        
+        total_fee = base_fee + settings.transaction_fee_fixed
+        
+        return {
+            'transaction_amount': float(amount),
+            'platform_fee': total_fee,
+            'fee_percentage': settings.fee_percentage,
+            'minimum_fee': settings.minimum_fee,
+            'maximum_fee': settings.maximum_fee,
+            'fee_breakdown': {
+                'base_fee': base_fee,
+                'transaction_fee_fixed': settings.transaction_fee_fixed,
+                'total_fee': total_fee
+            },
+            'seller_payout': float(amount) - total_fee,
+            'net_amount': float(amount) - total_fee
         }
 
 
@@ -612,4 +806,97 @@ class DisputeService:
     def close_dispute(dispute_id, resolution):
         """Close dispute"""
         return DisputeService.update_dispute_status(dispute_id, 'closed', resolution=resolution)
+    
+    @staticmethod
+    def get_dispute_details(dispute_id):
+        """Get dispute details"""
+        dispute = Dispute.objects(id=dispute_id).first()
+        if not dispute:
+            raise ValueError("Dispute not found")
+        
+        buyer = User.objects(id=dispute.buyer_id.id).first()
+        seller = User.objects(id=dispute.seller_id.id).first()
+        product = Product.objects(id=dispute.item_id.id).first()
+        
+        # Get messages (if available in model)
+        messages = []  # Add if Dispute model has messages field
+        
+        # Get evidence (if available in model)
+        evidence = []  # Add if Dispute model has evidence field
+        
+        # Build timeline
+        timeline = [
+            {
+                'action': 'dispute_created',
+                'date': dispute.created_at.isoformat(),
+                'by': 'buyer'
+            }
+        ]
+        if dispute.updated_at and dispute.updated_at != dispute.created_at:
+            timeline.append({
+                'action': 'dispute_updated',
+                'date': dispute.updated_at.isoformat(),
+                'by': 'admin'
+            })
+        
+        return {
+            'id': str(dispute.id),
+            'caseNumber': dispute.case_number,
+            'type': dispute.dispute_type,
+            'buyer': {
+                'id': str(dispute.buyer_id.id),
+                'name': dispute.buyer_name,
+                'email': buyer.email if buyer else ''
+            },
+            'seller': {
+                'id': str(dispute.seller_id.id),
+                'name': dispute.seller_name,
+                'email': seller.email if seller else ''
+            },
+            'item': {
+                'id': str(dispute.item_id.id),
+                'title': dispute.item_title,
+                'price': product.price if product else 0.0
+            },
+            'description': dispute.description,
+            'status': dispute.status,
+            'adminNotes': dispute.admin_notes or '',
+            'resolution': dispute.resolution or '',
+            'created_at': dispute.created_at.isoformat(),
+            'updated_at': dispute.updated_at.isoformat(),
+            'messages': messages,
+            'evidence': evidence,
+            'timeline': timeline
+        }
+    
+    @staticmethod
+    def add_dispute_message(dispute_id, message, message_type, admin_id):
+        """Add message to dispute"""
+        dispute = Dispute.objects(id=dispute_id).first()
+        if not dispute:
+            raise ValueError("Dispute not found")
+        
+        if message_type not in ['admin_note', 'internal_note']:
+            raise ValueError("Invalid message type")
+        
+        # For now, append to admin_notes
+        # In future, could add a separate messages collection
+        if dispute.admin_notes:
+            dispute.admin_notes += f"\n[{message_type.upper()}] {message}"
+        else:
+            dispute.admin_notes = f"[{message_type.upper()}] {message}"
+        
+        dispute.updated_at = datetime.utcnow()
+        dispute.save()
+        
+        return {
+            'id': str(dispute.id),
+            'message': message,
+            'type': message_type,
+            'created_at': datetime.utcnow().isoformat(),
+            'created_by': {
+                'id': admin_id,
+                'name': 'Admin User'
+            }
+        }
 

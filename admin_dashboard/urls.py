@@ -43,5 +43,38 @@ urlpatterns = [
     path('disputes/', views.get_disputes, name='get_disputes'),
     path('disputes/<str:dispute_id>/update/', views.update_dispute, name='update_dispute'),
     path('disputes/<str:dispute_id>/close/', views.close_dispute, name='close_dispute'),
+    path('disputes/<str:dispute_id>/', views.get_dispute_details, name='get_dispute_details'),
+    path('disputes/<str:dispute_id>/messages/', views.add_dispute_message, name='add_dispute_message'),
+    path('disputes/<str:dispute_id>/evidence/', views.upload_dispute_evidence, name='upload_dispute_evidence'),
+    
+    # User Management - Additional
+    path('users/<str:user_id>/', views.get_user_details, name='get_user_details'),
+    path('users/<str:user_id>/reactivate/', views.reactivate_user, name='reactivate_user'),
+    
+    # Transaction Management - Additional
+    path('transactions/<str:transaction_id>/', views.get_transaction_details, name='get_transaction_details'),
+    
+    # Cashout Requests - Additional
+    path('cashout-requests/<str:cashout_id>/', views.get_cashout_details, name='get_cashout_details'),
+    
+    # Dashboard - Additional
+    path('dashboard/recent-activities/', views.get_recent_activities, name='get_recent_activities'),
+    
+    # Fee Settings - Additional
+    path('fee-settings/calculate/', views.calculate_fee, name='calculate_fee'),
+    
+    # General Admin APIs
+    path('profile/', views.get_admin_profile, name='get_admin_profile'),
+    path('profile/update/', views.update_admin_profile, name='update_admin_profile'),
+    path('profile/change-password/', views.change_admin_password, name='change_admin_password'),
+    path('activity-logs/', views.get_activity_logs, name='get_activity_logs'),
+    
+    # Affiliate Management - Additional
+    path('affiliates/<str:affiliate_id>/', views.get_affiliate_details, name='get_affiliate_details'),
+    path('affiliates/<str:affiliate_id>/toggle-status/', views.toggle_affiliate_status, name='toggle_affiliate_status'),
+    
+    # Notification Management - Additional
+    path('notifications/<str:notification_id>/toggle/', views.toggle_notification_status, name='toggle_notification_status'),
+    path('notifications/templates/', views.get_notification_templates, name='get_notification_templates'),
 ]
 
