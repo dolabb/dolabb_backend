@@ -43,31 +43,28 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
     # Social icons HTML
     social_icons = ""
     if config['social_links']:
-        social_icons = '<tr><td align="center" style="padding: 15px 0 10px;"><table border="0" cellspacing="0" cellpadding="0"><tr>'
+        social_icons = '<tr><td align="center" style="padding: 20px 0 0;"><table border="0" cellspacing="0" cellpadding="0"><tr>'
         
         if config['social_links'].get('instagram'):
             social_icons += f'''
-                        <td style="padding: 0 8px;">
+                        <td style="padding: 0 12px;">
                             <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none;">
                                 <img src="https://www.dolabb.com/media/uploads/profiles/f7dd5ad8-fa19-4d95-8d91-9e66901a5222.jpg" 
-                                     alt="Instagram" width="24" height="24" 
-                                     style="width: 24px; height: 24px; display: block; border: 0;">
+                                     alt="Instagram" width="28" height="28" 
+                                     style="width: 28px; height: 28px; display: block; border: 0;">
                             </a>
                         </td>'''
         if config['social_links'].get('tiktok'):
             social_icons += f'''
-                        <td style="padding: 0 8px;">
+                        <td style="padding: 0 12px;">
                             <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none;">
                                 <img src="https://www.dolabb.com/media/uploads/profiles/82ae391e-8406-4f50-9b5f-4bde607be746.jpg" 
-                                     alt="TikTok" width="24" height="24" 
-                                     style="width: 24px; height: 24px; display: block; border: 0;">
+                                     alt="TikTok" width="28" height="28" 
+                                     style="width: 28px; height: 28px; display: block; border: 0;">
                             </a>
                         </td>'''
         
         social_icons += '</tr></table></td></tr>'
-    
-    # App Store and Play Store logos removed as requested
-    app_store_section = ""
     
     # Footer text
     footer_content = footer_text or f"Thanks from the {config['company_name']} team!"
@@ -81,45 +78,53 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
         <title>{title}</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ffffff;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; padding: 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; padding: 40px 20px;">
             <tr>
                 <td align="center">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="background-color: #ffffff; max-width: 600px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="background-color: #ffffff; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
                         <!-- Logo at Top -->
                         <tr>
-                            <td align="center" style="padding: 40px 20px 30px; background-color: #ffffff;">
+                            <td align="center" style="padding: 50px 40px 30px; background-color: #ffffff; border-radius: 12px 12px 0 0;">
                                 <img src="{config['logo_url']}" 
                                      alt="{config['company_name']} Logo" 
-                                     width="150" 
+                                     width="140" 
                                      height="auto" 
-                                     style="max-width: 150px; height: auto; display: block;">
+                                     style="max-width: 140px; height: auto; display: block;">
                             </td>
                         </tr>
                         
                         <!-- Greeting -->
                         <tr>
-                            <td align="center" style="padding: 0 40px 20px; background-color: #ffffff;">
-                                <h2 style="margin: 0; color: #1f2937; font-size: 24px; font-weight: 600; line-height: 1.3; text-align: center;">
+                            <td align="left" style="padding: 0 50px 25px; background-color: #ffffff;">
+                                <h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700; line-height: 1.2; letter-spacing: -0.5px;">
                                     {greeting}
-                                </h2>
+                                </h1>
                             </td>
                         </tr>
                         
                         <!-- Content Section -->
                         <tr>
-                            <td align="center" style="padding: 0 40px 30px; background-color: #ffffff;">
-                                <div style="color: #4b5563; font-size: 16px; line-height: 1.6; text-align: center;">
+                            <td align="left" style="padding: 0 50px 40px; background-color: #ffffff;">
+                                <div style="color: #374151; font-size: 16px; line-height: 1.7; text-align: left;">
                                     {content}
                                 </div>
                             </td>
                         </tr>
-                        {social_icons}
-                        {app_store_section}
                         
-                        <!-- Thanks Message -->
+                        <!-- Social Icons -->
+                        {social_icons}
+                        
+                        <!-- Divider -->
                         <tr>
-                            <td align="center" style="padding: 30px 40px 20px; background-color: #ffffff; text-align: center;">
-                                <p style="margin: 0; color: #6b7280; font-size: 16px; line-height: 1.5; text-align: center;">
+                            <td align="center" style="padding: 30px 50px 20px; background-color: #ffffff;">
+                                <div style="height: 1px; background-color: #e5e7eb; width: 100%;"></div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer Message -->
+                        <tr>
+                            <td align="center" style="padding: 0 50px 40px; background-color: #ffffff; border-radius: 0 0 12px 12px;">
+                                <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.6; text-align: center;">
                                     {footer_content}
                                 </p>
                             </td>
