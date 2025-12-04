@@ -296,6 +296,12 @@ class ProductService:
                 search_term = filters['search'].strip() if isinstance(filters['search'], str) else str(filters.get('search', ''))
                 if search_term:
                     query = query.filter(title__icontains=search_term)
+            if filters.get('onSale'):
+                # Filter for products that have original_price > price (on sale)
+                # Products are on sale if original_price exists and is greater than current price
+                # We need to filter in Python since MongoDB doesn't support field-to-field comparison easily
+                # This will be handled by filtering the results after query
+                pass  # Will filter in Python after fetching
         
         # Sorting - handle different sortBy options
         sort_by = filters.get('sortBy', 'newly listed') if filters else 'newly listed'
@@ -322,11 +328,128 @@ class ProductService:
             # Default: newly listed first
             query = query.order_by('-created_at')
         
+        # Handle onSale filter - filter products where original_price > price
+        if filters and filters.get('onSale'):
+            # We need to filter in memory since MongoDB doesn't support field-to-field comparison easily
+            # First get all matching products, then filter
+            all_products = list(query)
+            filtered_products = [
+                p for p in all_products 
+                if p.original_price and p.original_price > 0 and p.price and p.original_price > p.price
+            ]
+            total = len(filtered_products)
+            skip = (page - 1) * limit
+            products = filtered_products[skip:skip + limit]
+            return products, total
+        
         total = query.count()
         skip = (page - 1) * limit
         products = query.skip(skip).limit(limit)
         
         return products, total
+    
+    @staticmethod
+    def get_available_filters_for_products(filters=None):
+        """Get available filter options based on current filters"""
+        from collections import defaultdict
+        
+        # Build base query
+        query = Product.objects(status='active', approved=True)
+        
+        # Apply same filters as get_products to get relevant filter options
+        if filters:
+            from mongoengine import Q
+            if filters.get('category'):
+                query = query.filter(category=filters['category'])
+            if filters.get('subcategory'):
+                subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
+                if subcategory:
+                    query = query.filter(Q(subcategory__iexact=subcategory) | Q(subcategory=subcategory))
+        
+        # Get distinct brands
+        brands_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'brand': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$brand'}},
+            {'$project': {'brand': '$_id', '_id': 0}}
+        ]
+        
+        # Apply category filter if present
+        if filters and filters.get('category'):
+            brands_pipeline[0]['$match']['category'] = filters['category']
+        if filters and filters.get('subcategory'):
+            subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
+            if subcategory:
+                brands_pipeline[0]['$match']['subcategory'] = subcategory
+        
+        # Get distinct sizes
+        sizes_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'size': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$size'}},
+            {'$project': {'size': '$_id', '_id': 0}}
+        ]
+        
+        if filters and filters.get('category'):
+            sizes_pipeline[0]['$match']['category'] = filters['category']
+        if filters and filters.get('subcategory'):
+            subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
+            if subcategory:
+                sizes_pipeline[0]['$match']['subcategory'] = subcategory
+        
+        # Get distinct colors
+        colors_pipeline = [
+            {'$match': {'status': 'active', 'approved': True, 'color': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$color'}},
+            {'$project': {'color': '$_id', '_id': 0}}
+        ]
+        
+        if filters and filters.get('category'):
+            colors_pipeline[0]['$match']['category'] = filters['category']
+        if filters and filters.get('subcategory'):
+            subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
+            if subcategory:
+                colors_pipeline[0]['$match']['subcategory'] = subcategory
+        
+        # Get price range
+        price_pipeline = [
+            {'$match': {'status': 'active', 'approved': True}},
+            {'$group': {
+                '_id': None,
+                'min': {'$min': '$price'},
+                'max': {'$max': '$price'}
+            }}
+        ]
+        
+        if filters and filters.get('category'):
+            price_pipeline[0]['$match']['category'] = filters['category']
+        if filters and filters.get('subcategory'):
+            subcategory = filters['subcategory'].strip() if isinstance(filters['subcategory'], str) else str(filters.get('subcategory', ''))
+            if subcategory:
+                price_pipeline[0]['$match']['subcategory'] = subcategory
+        
+        # Execute aggregations
+        brands_data = list(Product.objects.aggregate(*brands_pipeline))
+        sizes_data = list(Product.objects.aggregate(*sizes_pipeline))
+        colors_data = list(Product.objects.aggregate(*colors_pipeline))
+        price_data = list(Product.objects.aggregate(*price_pipeline))
+        
+        # Format results
+        brands_list = sorted([item['brand'].strip() for item in brands_data if item.get('brand') and item['brand'].strip()])
+        sizes_list = sorted([item['size'].strip() for item in sizes_data if item.get('size') and item['size'].strip()])
+        colors_list = sorted([item['color'].strip() for item in colors_data if item.get('color') and item['color'].strip()])
+        
+        price_range = {'min': 0.0, 'max': 0.0}
+        if price_data and price_data[0].get('min') is not None:
+            price_range = {
+                'min': float(price_data[0]['min']),
+                'max': float(price_data[0]['max'])
+            }
+        
+        return {
+            'availableBrands': brands_list,
+            'availableSizes': sizes_list,
+            'availableColors': colors_list,
+            'priceRange': price_range
+        }
     
     @staticmethod
     def get_categories_with_subcategories():
@@ -839,6 +962,387 @@ class ProductService:
         skip = (page - 1) * limit
         products = query.skip(skip).limit(limit)
         return products, total
+    
+    @staticmethod
+    def get_all_categories_formatted():
+        """Get all categories with subcategories and featured collections in the format specified by documentation"""
+        from collections import defaultdict
+        
+        # Category definitions from documentation
+        category_definitions = {
+            'women': {
+                'name': 'Women',
+                'subcategories': ['tops', 'shoes', 'jeans', 'bags-purses', 'sweaters', 'sunglasses', 
+                                 'skirts', 'hats', 'dresses', 'coats-jackets', 'plus-size'],
+                'featured': ['wardrobe-essentials', 'denim-everything', 'lifestyle-sneakers', 
+                           'office-wear', 'gym-gear']
+            },
+            'men': {
+                'name': 'Men',
+                'subcategories': ['tshirts', 'shoes', 'shirts', 'bags', 'hoodies', 'hats', 'jeans', 
+                                 'sweaters', 'sunglasses', 'coats-jackets', 'big-tall'],
+                'featured': ['wardrobe-essentials', 'denim-everything', 'lifestyle-sneakers', 
+                           'office-wear', 'gym-gear']
+            },
+            'watches': {
+                'name': 'Watches',
+                'subcategories': ['mens-watches', 'womens-watches', 'smart-watches', 'luxury-watches', 
+                                 'sports-watches', 'vintage-watches', 'dress-watches', 'casual-watches'],
+                'featured': ['best-sellers', 'new-arrivals', 'on-sale']
+            },
+            'jewellery': {
+                'name': 'Jewellery',
+                'subcategories': ['rings', 'necklaces', 'earrings', 'bracelets', 'pendants', 'chains', 
+                                 'anklets', 'brooches', 'cufflinks'],
+                'featured': ['gold-collection', 'silver-collection', 'diamond-collection', 'vintage-jewellery']
+            },
+            'accessories': {
+                'name': 'Accessories',
+                'subcategories': ['bags', 'belts', 'hats-caps', 'sunglasses', 'scarves', 'wallets', 
+                                 'phone-cases', 'keychains', 'hair-accessories', 'ties-bow-ties'],
+                'featured': ['designer-bags', 'luxury-accessories', 'trending-now']
+            }
+        }
+        
+        # Subcategory name mappings
+        subcategory_names = {
+            'tops': 'Tops', 'shoes': 'Shoes', 'jeans': 'Jeans', 'bags-purses': 'Bags & Purses',
+            'sweaters': 'Sweaters', 'sunglasses': 'Sunglasses', 'skirts': 'Skirts', 'hats': 'Hats',
+            'dresses': 'Dresses', 'coats-jackets': 'Coats & Jackets', 'plus-size': 'Plus Size',
+            'tshirts': 'T-shirts', 'shirts': 'Shirts', 'bags': 'Bags', 'hoodies': 'Hoodies',
+            'big-tall': 'Big & Tall', 'mens-watches': "Men's Watches", 'womens-watches': "Women's Watches",
+            'smart-watches': 'Smart Watches', 'luxury-watches': 'Luxury Watches', 
+            'sports-watches': 'Sports Watches', 'vintage-watches': 'Vintage Watches',
+            'dress-watches': 'Dress Watches', 'casual-watches': 'Casual Watches',
+            'rings': 'Rings', 'necklaces': 'Necklaces', 'earrings': 'Earrings', 'bracelets': 'Bracelets',
+            'pendants': 'Pendants', 'chains': 'Chains', 'anklets': 'Anklets', 'brooches': 'Brooches',
+            'cufflinks': 'Cufflinks', 'belts': 'Belts', 'hats-caps': 'Hats & Caps', 'scarves': 'Scarves',
+            'wallets': 'Wallets', 'phone-cases': 'Phone Cases', 'keychains': 'Keychains',
+            'hair-accessories': 'Hair Accessories', 'ties-bow-ties': 'Ties & Bow Ties'
+        }
+        
+        # Featured collection name mappings
+        featured_names = {
+            'wardrobe-essentials': 'Wardrobe essentials',
+            'denim-everything': 'Denim everything',
+            'lifestyle-sneakers': 'Lifestyle sneakers',
+            'office-wear': 'Office wear',
+            'gym-gear': 'Gym gear',
+            'best-sellers': 'Best Sellers',
+            'new-arrivals': 'New Arrivals',
+            'on-sale': 'On Sale',
+            'gold-collection': 'Gold Collection',
+            'silver-collection': 'Silver Collection',
+            'diamond-collection': 'Diamond Collection',
+            'vintage-jewellery': 'Vintage Jewellery',
+            'designer-bags': 'Designer Bags',
+            'luxury-accessories': 'Luxury Accessories',
+            'trending-now': 'Trending Now'
+        }
+        
+        # Get product counts for each category/subcategory
+        categories_list = []
+        
+        for category_key, category_info in category_definitions.items():
+            # Map 'jewellery' (API) to 'jewelry' (database) for querying
+            db_category_key = 'jewelry' if category_key == 'jewellery' else category_key
+            
+            # Count total products in category
+            total_products = Product.objects(
+                category=db_category_key,
+                status='active',
+                approved=True
+            ).count()
+            
+            # Build subcategories with counts
+            subcategories_list = []
+            for subcat_key in category_info['subcategories']:
+                count = Product.objects(
+                    category=db_category_key,
+                    subcategory=subcat_key,
+                    status='active',
+                    approved=True
+                ).count()
+                
+                subcategories_list.append({
+                    'id': subcat_key,
+                    'name': subcategory_names.get(subcat_key, subcat_key.replace('-', ' ').title()),
+                    'key': subcat_key,
+                    'href': f'/{category_key}/{subcat_key}',
+                    'productCount': count
+                })
+            
+            # Build featured collections with counts
+            featured_list = []
+            for feat_key in category_info['featured']:
+                # For featured collections, we'll count products that match the collection criteria
+                # This is a simplified version - you may want to add a 'featured_collection' field to products
+                count = Product.objects(
+                    category=db_category_key,
+                    status='active',
+                    approved=True
+                ).count()  # Simplified - you can enhance this based on your business logic
+                
+                featured_list.append({
+                    'id': feat_key,
+                    'name': featured_names.get(feat_key, feat_key.replace('-', ' ').title()),
+                    'key': feat_key,
+                    'href': f'/{category_key}/{feat_key}',
+                    'productCount': count
+                })
+            
+            # Use 'jewellery' in API response even though model uses 'jewelry'
+            display_key = 'jewellery' if category_key == 'jewelry' else category_key
+            
+            categories_list.append({
+                'id': display_key,
+                'name': category_info['name'],
+                'key': display_key,
+                'href': f'/{display_key}',
+                'subCategories': subcategories_list,
+                'featured': featured_list,
+                'totalProducts': total_products
+            })
+        
+        return categories_list
+    
+    @staticmethod
+    def get_category_details(category_key):
+        """Get detailed information about a specific category"""
+        category_definitions = {
+            'women': {
+                'name': 'Women',
+                'subcategories': ['tops', 'shoes', 'jeans', 'bags-purses', 'sweaters', 'sunglasses', 
+                                 'skirts', 'hats', 'dresses', 'coats-jackets', 'plus-size'],
+                'featured': ['wardrobe-essentials', 'denim-everything', 'lifestyle-sneakers', 
+                           'office-wear', 'gym-gear']
+            },
+            'men': {
+                'name': 'Men',
+                'subcategories': ['tshirts', 'shoes', 'shirts', 'bags', 'hoodies', 'hats', 'jeans', 
+                                 'sweaters', 'sunglasses', 'coats-jackets', 'big-tall'],
+                'featured': ['wardrobe-essentials', 'denim-everything', 'lifestyle-sneakers', 
+                           'office-wear', 'gym-gear']
+            },
+            'watches': {
+                'name': 'Watches',
+                'subcategories': ['mens-watches', 'womens-watches', 'smart-watches', 'luxury-watches', 
+                                 'sports-watches', 'vintage-watches', 'dress-watches', 'casual-watches'],
+                'featured': ['best-sellers', 'new-arrivals', 'on-sale']
+            },
+            'jewellery': {
+                'name': 'Jewellery',
+                'subcategories': ['rings', 'necklaces', 'earrings', 'bracelets', 'pendants', 'chains', 
+                                 'anklets', 'brooches', 'cufflinks'],
+                'featured': ['gold-collection', 'silver-collection', 'diamond-collection', 'vintage-jewellery']
+            },
+            'accessories': {
+                'name': 'Accessories',
+                'subcategories': ['bags', 'belts', 'hats-caps', 'sunglasses', 'scarves', 'wallets', 
+                                 'phone-cases', 'keychains', 'hair-accessories', 'ties-bow-ties'],
+                'featured': ['designer-bags', 'luxury-accessories', 'trending-now']
+            }
+        }
+        
+        # Handle both 'jewelry' (model) and 'jewellery' (documentation) for compatibility
+        normalized_key = category_key
+        if category_key == 'jewelry':
+            normalized_key = 'jewellery'
+        elif category_key == 'jewellery':
+            normalized_key = 'jewellery'
+        
+        if normalized_key not in category_definitions:
+            raise ValueError(f"Invalid category: {category_key}")
+        
+        category_info = category_definitions[normalized_key]
+        
+        # Subcategory name mappings
+        subcategory_names = {
+            'tops': 'Tops', 'shoes': 'Shoes', 'jeans': 'Jeans', 'bags-purses': 'Bags & Purses',
+            'sweaters': 'Sweaters', 'sunglasses': 'Sunglasses', 'skirts': 'Skirts', 'hats': 'Hats',
+            'dresses': 'Dresses', 'coats-jackets': 'Coats & Jackets', 'plus-size': 'Plus Size',
+            'tshirts': 'T-shirts', 'shirts': 'Shirts', 'bags': 'Bags', 'hoodies': 'Hoodies',
+            'big-tall': 'Big & Tall', 'mens-watches': "Men's Watches", 'womens-watches': "Women's Watches",
+            'smart-watches': 'Smart Watches', 'luxury-watches': 'Luxury Watches', 
+            'sports-watches': 'Sports Watches', 'vintage-watches': 'Vintage Watches',
+            'dress-watches': 'Dress Watches', 'casual-watches': 'Casual Watches',
+            'rings': 'Rings', 'necklaces': 'Necklaces', 'earrings': 'Earrings', 'bracelets': 'Bracelets',
+            'pendants': 'Pendants', 'chains': 'Chains', 'anklets': 'Anklets', 'brooches': 'Brooches',
+            'cufflinks': 'Cufflinks', 'belts': 'Belts', 'hats-caps': 'Hats & Caps', 'scarves': 'Scarves',
+            'wallets': 'Wallets', 'phone-cases': 'Phone Cases', 'keychains': 'Keychains',
+            'hair-accessories': 'Hair Accessories', 'ties-bow-ties': 'Ties & Bow Ties'
+        }
+        
+        # Featured collection name mappings
+        featured_names = {
+            'wardrobe-essentials': 'Wardrobe essentials',
+            'denim-everything': 'Denim everything',
+            'lifestyle-sneakers': 'Lifestyle sneakers',
+            'office-wear': 'Office wear',
+            'gym-gear': 'Gym gear',
+            'best-sellers': 'Best Sellers',
+            'new-arrivals': 'New Arrivals',
+            'on-sale': 'On Sale',
+            'gold-collection': 'Gold Collection',
+            'silver-collection': 'Silver Collection',
+            'diamond-collection': 'Diamond Collection',
+            'vintage-jewellery': 'Vintage Jewellery',
+            'designer-bags': 'Designer Bags',
+            'luxury-accessories': 'Luxury Accessories',
+            'trending-now': 'Trending Now'
+        }
+        
+        # Handle both 'jewelry' (model) and 'jewellery' (documentation) for compatibility
+        normalized_key = category_key
+        if category_key == 'jewelry':
+            normalized_key = 'jewelry'  # Use model key for query
+        elif category_key == 'jewellery':
+            normalized_key = 'jewelry'  # Use model key for query
+        
+        # Count total products
+        total_products = Product.objects(
+            category=normalized_key,
+            status='active',
+            approved=True
+        ).count()
+        
+        # Build subcategories with counts
+        subcategories_list = []
+        for subcat_key in category_info['subcategories']:
+            count = Product.objects(
+                category=normalized_key,
+                subcategory=subcat_key,
+                status='active',
+                approved=True
+            ).count()
+            
+            subcategories_list.append({
+                'id': subcat_key,
+                'name': subcategory_names.get(subcat_key, subcat_key.replace('-', ' ').title()),
+                'key': subcat_key,
+                'href': f'/{category_key}/{subcat_key}',
+                'productCount': count
+            })
+        
+        # Build featured collections with counts
+        featured_list = []
+        for feat_key in category_info['featured']:
+            count = Product.objects(
+                category=normalized_key,
+                status='active',
+                approved=True
+            ).count()  # Simplified - enhance based on business logic
+            
+            featured_list.append({
+                'id': feat_key,
+                'name': featured_names.get(feat_key, feat_key.replace('-', ' ').title()),
+                'key': feat_key,
+                'href': f'/{category_key}/{feat_key}',
+                'productCount': count
+            })
+        
+        # Return with original category_key (jewellery) even if we queried with jewelry
+        return {
+            'id': category_key if category_key == 'jewellery' else normalized_key,
+            'name': category_info['name'],
+            'key': category_key if category_key == 'jewellery' else normalized_key,
+            'href': f'/{category_key if category_key == "jewellery" else normalized_key}',
+            'subCategories': subcategories_list,
+            'featured': featured_list,
+            'totalProducts': total_products
+        }
+    
+    @staticmethod
+    def get_category_filters(category_key, subcategory_key=None):
+        """Get available filter options for a category/subcategory"""
+        from collections import defaultdict
+        
+        # Handle both 'jewelry' (model) and 'jewellery' (documentation) for compatibility
+        normalized_key = category_key
+        if category_key == 'jewelry':
+            normalized_key = 'jewelry'  # Use model key for query
+        elif category_key == 'jewellery':
+            normalized_key = 'jewelry'  # Use model key for query
+        
+        # Build query
+        query = {
+            'category': normalized_key,
+            'status': 'active',
+            'approved': True
+        }
+        
+        if subcategory_key:
+            query['subcategory'] = subcategory_key
+        
+        # Get distinct brands with counts
+        brands_pipeline = [
+            {'$match': {**query, 'brand': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$brand', 'count': {'$sum': 1}}},
+            {'$project': {'name': '$_id', 'count': 1, '_id': 0}},
+            {'$sort': {'name': 1}}
+        ]
+        
+        # Get distinct sizes with counts
+        sizes_pipeline = [
+            {'$match': {**query, 'size': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$size', 'count': {'$sum': 1}}},
+            {'$project': {'name': '$_id', 'count': 1, '_id': 0}},
+            {'$sort': {'name': 1}}
+        ]
+        
+        # Get distinct colors with counts
+        colors_pipeline = [
+            {'$match': {**query, 'color': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$color', 'count': {'$sum': 1}}},
+            {'$project': {'name': '$_id', 'count': 1, '_id': 0}},
+            {'$sort': {'name': 1}}
+        ]
+        
+        # Get distinct conditions with counts
+        conditions_pipeline = [
+            {'$match': {**query, 'condition': {'$exists': True, '$ne': None, '$ne': ''}}},
+            {'$group': {'_id': '$condition', 'count': {'$sum': 1}}},
+            {'$project': {'name': '$_id', 'count': 1, '_id': 0}},
+            {'$sort': {'name': 1}}
+        ]
+        
+        # Get price range
+        price_pipeline = [
+            {'$match': query},
+            {'$group': {
+                '_id': None,
+                'min': {'$min': '$price'},
+                'max': {'$max': '$price'}
+            }}
+        ]
+        
+        # Execute aggregations
+        brands_data = list(Product.objects.aggregate(*brands_pipeline))
+        sizes_data = list(Product.objects.aggregate(*sizes_pipeline))
+        colors_data = list(Product.objects.aggregate(*colors_pipeline))
+        conditions_data = list(Product.objects.aggregate(*conditions_pipeline))
+        price_data = list(Product.objects.aggregate(*price_pipeline))
+        
+        # Format results
+        brands = [{'name': item['name'], 'count': item['count']} for item in brands_data]
+        sizes = [{'name': item['name'], 'count': item['count']} for item in sizes_data]
+        colors = [{'name': item['name'], 'count': item['count']} for item in colors_data]
+        conditions = [{'name': item['name'], 'count': item['count']} for item in conditions_data]
+        
+        price_range = {'min': 0.0, 'max': 0.0}
+        if price_data and price_data[0].get('min') is not None:
+            price_range = {
+                'min': float(price_data[0]['min']),
+                'max': float(price_data[0]['max'])
+            }
+        
+        return {
+            'brands': brands,
+            'sizes': sizes,
+            'colors': colors,
+            'conditions': conditions,
+            'priceRange': price_range
+        }
 
 
 class OfferService:

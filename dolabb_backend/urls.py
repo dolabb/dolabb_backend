@@ -18,6 +18,7 @@ def api_root(request):
         'endpoints': {
             'authentication': '/api/auth/',
             'admin_dashboard': '/api/admin/',
+            'categories': '/api/categories/',
             'products': '/api/products/',
             'chat': '/api/chat/',
             'offers': '/api/offers/',
@@ -37,6 +38,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
     path('api/admin/', include('admin_dashboard.urls')),
+    path('api/categories/', include('products.category_urls')),  # New categories API
     path('api/products/', include('products.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/offers/', include('products.offer_urls')),

@@ -52,7 +52,14 @@ def get_products(request):
         filters['condition'] = request.GET.get('condition').strip()
     if request.GET.get('search'):
         filters['search'] = request.GET.get('search').strip()
+    if request.GET.get('onSale'):
+        on_sale = request.GET.get('onSale', '').strip().lower()
+        if on_sale in ['true', '1', 'yes']:
+            filters['onSale'] = True
     filters['sortBy'] = sort_by
+    
+    # Check if client wants new format (default to new format for documentation compliance)
+    use_new_format = request.GET.get('format', 'new').lower() != 'legacy'
     
     try:
         page = int(request.GET.get('page', 1))
@@ -84,6 +91,7 @@ def get_products(request):
         for product in products:
             try:
                 is_saved = False
+                is_liked = False
                 if user_id and user_id != 'None' and user_id.strip():
                     try:
                         from bson import ObjectId
@@ -95,6 +103,8 @@ def get_products(request):
                 
                 # Handle seller_id safely
                 seller = None
+                seller_rating = 0
+                total_sales = 0
                 if product.seller_id:
                     try:
                         # Handle ReferenceField - seller_id might be an ObjectId or a User object
@@ -111,10 +121,23 @@ def get_products(request):
                         
                         if seller_obj_id:
                             seller = User.objects(id=seller_obj_id).first()
+                            if seller:
+                                # Get seller rating and total sales
+                                try:
+                                    from products.services import ReviewService
+                                    rating_stats = ReviewService.get_seller_rating_stats(str(seller.id))
+                                    seller_rating = rating_stats.get('average_rating', 0)
+                                    total_sales = Order.objects(
+                                        seller_id=seller.id,
+                                        payment_status='completed'
+                                    ).count()
+                                except:
+                                    pass
                     except:
                         seller = None
                 
-                products_list.append({
+                # Build product object matching documentation format
+                product_obj = {
                     'id': str(product.id) if product.id else '',
                     'title': product.title if product.title else '',
                     'description': product.description or '',
@@ -127,22 +150,68 @@ def get_products(request):
                     'size': product.size or '',
                     'color': product.color or '',
                     'condition': product.condition if product.condition else '',
+                    'tags': product.tags or [],
                     'seller': {
                         'id': str(seller.id) if seller and hasattr(seller, 'id') and seller.id else '',
                         'username': seller.username if seller and hasattr(seller, 'username') else '',
-                        'profileImage': seller.profile_image if seller and hasattr(seller, 'profile_image') else ''
+                        'profileImage': seller.profile_image if seller and hasattr(seller, 'profile_image') else '',
+                        'rating': seller_rating,
+                        'totalSales': total_sales
                     },
                     'isSaved': is_saved,
-                    'createdAt': product.created_at.isoformat() if product.created_at else None
-                })
+                    'isLiked': is_liked,
+                    'likes': product.likes_count if hasattr(product, 'likes_count') else 0,
+                    'status': product.status if product.status else 'active',
+                    'quantity': product.quantity if hasattr(product, 'quantity') else 1,
+                    'createdAt': product.created_at.isoformat() if product.created_at else None,
+                    'updatedAt': product.updated_at.isoformat() if product.updated_at else None
+                }
+                
+                # Add shipping info if available
+                if hasattr(product, 'shipping_info') and product.shipping_info:
+                    product_obj['shippingInfo'] = {
+                        'cost': product.shipping_cost if hasattr(product, 'shipping_cost') else 0.0,
+                        'estimatedDays': product.shipping_info.estimated_days if hasattr(product.shipping_info, 'estimated_days') else product.processing_time_days if hasattr(product, 'processing_time_days') else 7,
+                        'locations': product.shipping_info.locations if hasattr(product.shipping_info, 'locations') else []
+                    }
+                elif hasattr(product, 'shipping_cost') or hasattr(product, 'processing_time_days'):
+                    product_obj['shippingInfo'] = {
+                        'cost': product.shipping_cost if hasattr(product, 'shipping_cost') else 0.0,
+                        'estimatedDays': product.processing_time_days if hasattr(product, 'processing_time_days') else 7,
+                        'locations': []
+                    }
+                
+                products_list.append(product_obj)
             except Exception as e:
                 # Skip products that cause errors and continue
                 import logging
                 logging.error(f"Error processing product: {str(e)}")
                 continue
         
-        # Return products array directly
-        return Response(products_list, status=status.HTTP_200_OK)
+        # Get available filters for response
+        available_filters = ProductService.get_available_filters_for_products(filters)
+        
+        # Calculate pagination
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        # Return in new format (documentation compliant) or legacy format
+        if use_new_format:
+            return Response({
+                'success': True,
+                'products': products_list,
+                'pagination': {
+                    'currentPage': page,
+                    'totalPages': total_pages,
+                    'totalItems': total,
+                    'itemsPerPage': limit,
+                    'hasNextPage': page < total_pages,
+                    'hasPreviousPage': page > 1
+                },
+                'filters': available_filters
+            }, status=status.HTTP_200_OK)
+        else:
+            # Legacy format - return array directly for backward compatibility
+            return Response(products_list, status=status.HTTP_200_OK)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
