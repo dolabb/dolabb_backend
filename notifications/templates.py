@@ -80,6 +80,11 @@ SELLER_NOTIFICATIONS = {
 
 # BUYER Notifications
 BUYER_NOTIFICATIONS = {
+    'otp_verification': {
+        'title': 'Your OTP Code',
+        'message': 'Your OTP code is: {otp_code}. This code will expire in 5 minutes. If you didn\'t request this code, please ignore this email.',
+        'type': 'buyer_message'
+    },
     'welcome_email': {
         'title': 'Welcome! 👋',
         'message': 'Welcome to our marketplace! Your account has been created successfully.',

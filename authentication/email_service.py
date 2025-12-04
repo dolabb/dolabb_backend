@@ -1,15 +1,13 @@
 """
 Email service using Resend
 """
-import resend
+from notifications.email_templates import send_notification_email
+from notifications.templates import get_notification_template
 from django.conf import settings
-
-# Set API key (validation happens in send_otp_email function)
-resend.api_key = settings.RESEND_API_KEY
 
 
 def send_otp_email(email, otp_code, name):
-    """Send OTP email via Resend"""
+    """Send OTP email via Resend using notification template"""
     try:
         # Validate email parameters
         if not email or not email.strip():
@@ -27,22 +25,24 @@ def send_otp_email(email, otp_code, name):
                 "Please set RESEND_FROM_EMAIL to a verified domain email (e.g., no-reply@dolabb.com)"
             )
         
-        params = {
-            "from": settings.RESEND_FROM_EMAIL,
-            "to": [email],
-            "subject": "Your OTP Code",
-            "html": f"""
-            <html>
-            <body>
-                <h2>Hello {name},</h2>
-                <p>Your OTP code is: <strong>{otp_code}</strong></p>
-                <p>This code will expire in 5 minutes.</p>
-                <p>If you didn't request this code, please ignore this email.</p>
-            </body>
-            </html>
-            """
-        }
-        email_response = resend.Emails.send(params)
+        # Get OTP template
+        template = get_notification_template('buyer', 'otp_verification')
+        if not template:
+            raise ValueError("OTP email template not found")
+        
+        # Format message with OTP code
+        message = template['message'].format(otp_code=f'<strong style="font-size: 24px; color: #1f2937; letter-spacing: 4px;">{otp_code}</strong>')
+        
+        # Send using notification email system
+        email_response = send_notification_email(
+            email=email,
+            notification_title=template['title'],
+            notification_message=message,
+            notification_type='info',
+            user_name=name,
+            custom_footer="If you didn't request this code, please ignore this email."
+        )
+        
         return email_response
     except Exception as e:
         error_msg = str(e)
