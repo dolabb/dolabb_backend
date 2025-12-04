@@ -215,6 +215,14 @@ class AffiliateService:
             affiliate.paid_earnings = str(round(paid, 2))
             affiliate.save()
         
+        # Send notification to affiliate
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_payout_sent(str(payout.affiliate_id.id), 'affiliate')
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending affiliate payout notification: {str(e)}")
+        
         return payout
     
     @staticmethod
@@ -236,6 +244,14 @@ class AffiliateService:
             pending = float(affiliate.pending_earnings or 0) + payout.amount
             affiliate.pending_earnings = str(round(pending, 2))
             affiliate.save()
+        
+        # Send notification to affiliate
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_payout_failed(str(payout.affiliate_id.id), 'affiliate')
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending affiliate payout failed notification: {str(e)}")
         
         return payout
     

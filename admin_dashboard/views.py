@@ -891,6 +891,16 @@ def toggle_affiliate_status(request, affiliate_id):
         affiliate.status = status_value
         affiliate.save()
         
+        # Send notification if affiliate is deactivated
+        if status_value == 'deactivated':
+            try:
+                from notifications.notification_helper import NotificationHelper
+                NotificationHelper.send_affiliate_account_suspended(str(affiliate.id))
+                NotificationHelper.send_policy_violation_warning(str(affiliate.id), 'affiliate')
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending affiliate deactivation notifications: {str(e)}")
+        
         return Response({
             'success': True,
             'message': 'Affiliate status updated',

@@ -252,6 +252,21 @@ def ship_order(request, order_id):
             shipment_proof=shipment_proof_url
         )
         
+        # Send notifications
+        try:
+            from notifications.notification_helper import NotificationHelper
+            if order_status == 'delivered':
+                # Notify buyer - item delivered
+                NotificationHelper.send_item_delivered(str(order.buyer_id.id))
+                # Notify buyer - review your purchase
+                NotificationHelper.send_review_your_purchase(str(order.buyer_id.id))
+            else:
+                # Notify buyer - seller shipped item
+                NotificationHelper.send_seller_shipped_item(str(order.buyer_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending shipping notifications: {str(e)}")
+        
         response_data = {
             'success': True,
             'payment': {

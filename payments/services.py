@@ -78,6 +78,23 @@ class MoyasarPaymentService:
                 order.status = 'packed'
             order.save()
             
+            # Send notifications based on payment status
+            try:
+                from notifications.notification_helper import NotificationHelper
+                if payment.status == 'completed':
+                    # Notify seller - payment confirmed
+                    NotificationHelper.send_payment_confirmed(str(order.seller_id.id))
+                    # Notify seller - order needs shipping
+                    NotificationHelper.send_order_needs_shipping(str(order.seller_id.id))
+                    # Notify buyer - payment successful
+                    NotificationHelper.send_payment_successful(str(order.buyer_id.id))
+                elif payment.status == 'failed':
+                    # Notify buyer - payment failed
+                    NotificationHelper.send_payment_failed(str(order.buyer_id.id))
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending payment notifications: {str(e)}")
+            
             # Update offer status from 'accepted' to 'paid' if order has an associated offer
             if payment.status == 'completed' and order.offer_id:
                 offer = Offer.objects(id=order.offer_id.id).first()

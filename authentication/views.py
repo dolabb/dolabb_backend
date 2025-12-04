@@ -500,7 +500,46 @@ def update_profile(request):
             user.house_number = data['house_number']
         if 'houseNumber' in data:
             user.house_number = data['houseNumber']
+        
+        # Bank/Payment fields (optional)
+        bank_details_updated = False
+        if 'bank_name' in data:
+            user.bank_name = data['bank_name']
+            bank_details_updated = True
+        if 'bankName' in data:
+            user.bank_name = data['bankName']
+            bank_details_updated = True
+        if 'account_number' in data:
+            user.account_number = data['account_number']
+            bank_details_updated = True
+        if 'accountNumber' in data:
+            user.account_number = data['accountNumber']
+            bank_details_updated = True
+        if 'iban' in data:
+            user.iban = data['iban']
+            bank_details_updated = True
+        if 'IBAN' in data:
+            user.iban = data['IBAN']
+            bank_details_updated = True
+        if 'account_holder_name' in data:
+            user.account_holder_name = data['account_holder_name']
+            bank_details_updated = True
+        if 'accountHolderName' in data:
+            user.account_holder_name = data['accountHolderName']
+            bank_details_updated = True
+        
         user.save()
+        
+        # Send notification if bank details were updated
+        if bank_details_updated:
+            try:
+                from notifications.notification_helper import NotificationHelper
+                if user.role == 'seller':
+                    NotificationHelper.send_bank_payment_setup_completed(str(user.id))
+                else:
+                    NotificationHelper.send_buyer_bank_payment_setup_completed(str(user.id))
+            except Exception as e:
+                print(f"Error sending bank setup notification: {str(e)}")
         
         serializer = UserProfileSerializer({
             'id': str(user.id),

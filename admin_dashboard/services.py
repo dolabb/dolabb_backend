@@ -240,6 +240,17 @@ class UserManagementService:
         user.status = 'suspended'
         user.save()
         
+        # Send policy violation notification
+        try:
+            from notifications.notification_helper import NotificationHelper
+            if user.role == 'seller':
+                NotificationHelper.send_policy_violation_warning(str(user.id))
+            elif user.role == 'buyer':
+                NotificationHelper.send_policy_violation_warning(str(user.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending suspension notification: {str(e)}")
+        
         return user
     
     @staticmethod
@@ -363,6 +374,14 @@ class ListingManagementService:
         listing.approved = True
         listing.reviewed = True
         listing.save()
+        
+        # Send notification to seller
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_listing_published(str(listing.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending listing approval notification: {str(e)}")
         
         return listing
     
@@ -524,6 +543,14 @@ class CashoutService:
         cashout.reviewed_by = admin_id
         cashout.save()
         
+        # Send notification to seller
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_payout_sent(str(cashout.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending payout notification: {str(e)}")
+        
         return cashout
     
     @staticmethod
@@ -538,6 +565,14 @@ class CashoutService:
         cashout.reviewed_at = datetime.utcnow()
         cashout.reviewed_by = admin_id
         cashout.save()
+        
+        # Send notification to seller
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_payout_failed(str(cashout.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending payout failed notification: {str(e)}")
         
         return cashout
     
@@ -799,6 +834,18 @@ class DisputeService:
         
         dispute.updated_at = datetime.utcnow()
         dispute.save()
+        
+        # Send notifications if dispute is resolved
+        if status == 'resolved':
+            try:
+                from notifications.notification_helper import NotificationHelper
+                # Notify seller
+                NotificationHelper.send_dispute_resolved(str(dispute.seller_id.id), 'seller')
+                # Notify buyer
+                NotificationHelper.send_dispute_resolved(str(dispute.buyer_id.id), 'buyer')
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending dispute resolution notifications: {str(e)}")
         
         return dispute
     

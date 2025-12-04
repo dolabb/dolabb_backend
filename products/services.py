@@ -120,9 +120,11 @@ class ProductService:
             raise ValueError("Seller not found")
         
         # Change user role from buyer to seller if they create a product
+        role_changed = False
         if seller.role == 'buyer':
             seller.role = 'seller'
             seller.save()
+            role_changed = True
         
         # Convert seller_id to ObjectId if it's a string
         from bson import ObjectId
@@ -216,6 +218,20 @@ class ProductService:
         # Auto-approve products when created
         product.approved = True
         product.save()
+        
+        # Send notifications
+        try:
+            from notifications.notification_helper import NotificationHelper
+            
+            # Send seller verification notification if role changed
+            if role_changed:
+                NotificationHelper.send_seller_verification_approved(str(seller.id))
+            
+            # Send listing published notification
+            NotificationHelper.send_listing_published(str(seller.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending notifications: {str(e)}")
         
         return product
     
@@ -1419,6 +1435,14 @@ class OfferService:
         offer.updated_at = datetime.utcnow()
         offer.save()
         
+        # Send notification to buyer - offer accepted
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_offer_accepted(str(offer.buyer_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending offer accepted notification: {str(e)}")
+        
         return offer
     
     @staticmethod
@@ -1431,6 +1455,14 @@ class OfferService:
         offer.status = 'rejected'
         offer.updated_at = datetime.utcnow()
         offer.save()
+        
+        # Send notification to buyer - offer declined
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_offer_declined(str(offer.buyer_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending offer declined notification: {str(e)}")
         
         return offer
     
@@ -1481,6 +1513,19 @@ class OfferService:
         
         offer.updated_at = datetime.utcnow()
         offer.save()
+        
+        # Send notification to the other party
+        try:
+            from notifications.notification_helper import NotificationHelper
+            if is_buyer:
+                # Buyer countered - notify seller
+                NotificationHelper.send_counter_offer_received(str(offer.seller_id.id), 'seller')
+            else:
+                # Seller countered - notify buyer
+                NotificationHelper.send_counter_offer_received(str(offer.buyer_id.id), 'buyer')
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending counter offer notification: {str(e)}")
         
         return offer
     
@@ -1774,6 +1819,17 @@ class OrderService:
         
         order.save()
         
+        # Send notifications
+        try:
+            from notifications.notification_helper import NotificationHelper
+            # Notify seller - item sold
+            NotificationHelper.send_item_sold(str(order.seller_id.id))
+            # Notify buyer - order confirmation
+            NotificationHelper.send_order_confirmation(str(order.buyer_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending order notifications: {str(e)}")
+        
         # Create affiliate transaction record (but don't update earnings yet - only when payment is completed)
         if affiliate and affiliate_code and affiliate_commission > 0:
             try:
@@ -1947,6 +2003,14 @@ class OrderService:
                 # Update transaction status to 'paid' (earnings were already added on payment completion)
                 existing_transaction.status = 'paid'
                 existing_transaction.save()
+                
+                # Send commission approved notification
+                try:
+                    from notifications.notification_helper import NotificationHelper
+                    NotificationHelper.send_commission_approved(str(affiliate.id))
+                except Exception as e:
+                    import logging
+                    logging.error(f"Error sending commission approved notification: {str(e)}")
             
         except Exception as e:
             # Log error but don't fail the process
@@ -2044,6 +2108,14 @@ class ReviewService:
         # Mark order as reviewed
         order.review_submitted = True
         order.save()
+        
+        # Send notification to seller - buyer confirmed delivery
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_buyer_confirmed_delivery(str(order.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending review notification: {str(e)}")
         
         # Update affiliate earnings if review is submitted AND shipment_proof is uploaded
         # This ensures earnings are only credited when transaction is fully completed

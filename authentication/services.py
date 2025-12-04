@@ -373,6 +373,14 @@ class AuthService:
             # Generate token after successful verification
             token = JWTService.generate_token(user.id, 'user', user.email, user.role)
             
+            # Send welcome email notification
+            try:
+                from notifications.notification_helper import NotificationHelper
+                NotificationHelper.send_welcome_email(str(user.id))
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending welcome notification: {str(e)}")
+            
             return user, token
         except Exception as e:
             # Rollback: if user save fails, don't delete temp entry
@@ -502,6 +510,18 @@ class AuthService:
         
         # Generate token after successful verification
         token = JWTService.generate_token(affiliate.id, 'affiliate', affiliate.email, 'affiliate')
+        
+        # Send welcome notification
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_welcome_to_affiliate_program(str(affiliate.id))
+            
+            # Check if bank details are missing
+            if not affiliate.bank_name or not affiliate.account_number:
+                NotificationHelper.send_affiliate_payment_details_needed(str(affiliate.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending affiliate notifications: {str(e)}")
         
         return affiliate, token
     
