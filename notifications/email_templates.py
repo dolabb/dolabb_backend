@@ -48,79 +48,26 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
         if config['social_links'].get('instagram'):
             social_icons += f'''
                         <td style="padding: 0 8px;">
-                            <a href="{config['social_links']['instagram']}" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/instagram.svg" 
-                                     alt="Instagram" width="20" height="20" 
-                                     style="width: 20px; height: 20px; opacity: 0.6;">
+                            <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none;">
+                                <img src="https://www.dolabb.com/media/uploads/profiles/f7dd5ad8-fa19-4d95-8d91-9e66901a5222.jpg" 
+                                     alt="Instagram" width="24" height="24" 
+                                     style="width: 24px; height: 24px; display: block; border: 0;">
                             </a>
                         </td>'''
         if config['social_links'].get('tiktok'):
             social_icons += f'''
                         <td style="padding: 0 8px;">
-                            <a href="{config['social_links']['tiktok']}" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/tiktok.svg" 
-                                     alt="TikTok" width="20" height="20" 
-                                     style="width: 20px; height: 20px; opacity: 0.6;">
-                            </a>
-                        </td>'''
-        if config['social_links'].get('facebook'):
-            social_icons += f'''
-                        <td style="padding: 0 8px;">
-                            <a href="{config['social_links']['facebook']}" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/facebook.svg" 
-                                     alt="Facebook" width="20" height="20" 
-                                     style="width: 20px; height: 20px; opacity: 0.6;">
-                            </a>
-                        </td>'''
-        if config['social_links'].get('twitter'):
-            social_icons += f'''
-                        <td style="padding: 0 8px;">
-                            <a href="{config['social_links']['twitter']}" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/twitter.svg" 
-                                     alt="Twitter" width="20" height="20" 
-                                     style="width: 20px; height: 20px; opacity: 0.6;">
-                            </a>
-                        </td>'''
-        if config['social_links'].get('linkedin'):
-            social_icons += f'''
-                        <td style="padding: 0 8px;">
-                            <a href="{config['social_links']['linkedin']}" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/linkedin.svg" 
-                                     alt="LinkedIn" width="20" height="20" 
-                                     style="width: 20px; height: 20px; opacity: 0.6;">
+                            <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none;">
+                                <img src="https://www.dolabb.com/media/uploads/profiles/82ae391e-8406-4f50-9b5f-4bde607be746.jpg" 
+                                     alt="TikTok" width="24" height="24" 
+                                     style="width: 24px; height: 24px; display: block; border: 0;">
                             </a>
                         </td>'''
         
         social_icons += '</tr></table></td></tr>'
     
-    # App Store and Play Store logos
+    # App Store and Play Store logos removed as requested
     app_store_section = ""
-    if config.get('app_store_url') and config.get('play_store_url'):
-        app_store_section = f"""
-        <tr>
-            <td align="center" style="padding: 10px 0 30px;">
-                <table border="0" cellspacing="0" cellpadding="0">
-                    <tr>
-                        <td style="padding: 0 8px;">
-                            <a href="{config['app_store_url']}" style="display: inline-block; text-decoration: none;">
-                                <img src="{config['app_store_logo']}" 
-                                     alt="Download on the App Store" 
-                                     width="110" height="36" 
-                                     style="width: 110px; height: 36px; display: block;">
-                            </a>
-                        </td>
-                        <td style="padding: 0 8px;">
-                            <a href="{config['play_store_url']}" style="display: inline-block; text-decoration: none;">
-                                <img src="{config['play_store_logo']}" 
-                                     alt="Get it on Google Play" 
-                                     width="125" height="36" 
-                                     style="width: 125px; height: 36px; display: block;">
-                            </a>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>"""
     
     # Footer text
     footer_content = footer_text or f"Thanks from the {config['company_name']} team!"
@@ -210,16 +157,7 @@ def render_notification_email(notification_title, notification_message, notifica
         # Wrap in paragraph
         notification_message = f'<p style="margin: 0 0 15px;">{notification_message}</p>'
     
-    # Add icon/emoji based on notification type
-    type_icons = {
-        'success': '✅',
-        'warning': '⚠️',
-        'error': '❌',
-        'info': 'ℹ️'
-    }
-    icon = type_icons.get(notification_type, '')
-    if icon:
-        notification_message = f'<p style="font-size: 24px; margin: 0 0 15px;">{icon}</p>{notification_message}'
+    # Icons removed as requested
     
     return get_email_base_template(
         title=notification_title,
