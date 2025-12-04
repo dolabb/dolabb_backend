@@ -1403,6 +1403,14 @@ class OfferService:
         
         offer.save()
         
+        # Send notification to seller - new offer received
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_new_offer_received(str(offer.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending new offer notification: {str(e)}")
+        
         return offer
     
     @staticmethod
@@ -2045,6 +2053,7 @@ class OrderService:
         if not order:
             raise ValueError("Order not found")
         
+        old_status = order.status
         order.status = status
         if tracking_number:
             order.tracking_number = tracking_number
@@ -2052,6 +2061,18 @@ class OrderService:
             order.shipment_proof = shipment_proof
         order.updated_at = datetime.utcnow()
         order.save()
+        
+        # Send notifications based on status change
+        try:
+            from notifications.notification_helper import NotificationHelper
+            if status == 'cancelled' and old_status != 'cancelled':
+                # Notify buyer - order canceled
+                NotificationHelper.send_order_canceled(str(order.buyer_id.id))
+                # Notify seller - buyer rejected order
+                NotificationHelper.send_buyer_rejected_order(str(order.seller_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending order cancellation notifications: {str(e)}")
         
         # Reload order to get latest state
         order.reload()
