@@ -1,7 +1,7 @@
 """
 Admin Dashboard models using mongoengine
 """
-from mongoengine import Document, StringField, FloatField, DateTimeField, ReferenceField, IntField, EmbeddedDocument, EmbeddedDocumentField, ListField
+from mongoengine import Document, StringField, FloatField, DateTimeField, ReferenceField, IntField, EmbeddedDocument, EmbeddedDocumentField, ListField, BooleanField
 from datetime import datetime
 from authentication.models import User, Affiliate
 from products.models import Product, Order, Offer
@@ -81,5 +81,36 @@ class ActivityLog(Document):
     meta = {
         'collection': 'activity_logs',
         'indexes': ['date', 'activity_type']
+    }
+
+
+class HeroSection(Document):
+    """Hero section model for homepage"""
+    # Background settings
+    background_type = StringField(choices=['image', 'single_color', 'gradient'], default='image')
+    image_url = StringField()  # URL for background image
+    single_color = StringField()  # Hex color code (e.g., '#FF5733')
+    gradient_colors = ListField(StringField())  # List of hex colors for gradient (e.g., ['#FF5733', '#33FF57'])
+    gradient_direction = StringField(default='to right')  # CSS gradient direction (e.g., 'to right', 'to bottom', '135deg')
+    
+    # Text content
+    title = StringField(required=True)
+    subtitle = StringField()
+    button_text = StringField()
+    button_link = StringField()
+    
+    # Text styling
+    text_color = StringField(default='#FFFFFF')  # Hex color for text
+    
+    # Status
+    is_active = BooleanField(default=True)
+    
+    # Timestamps
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+    
+    meta = {
+        'collection': 'hero_section',
+        'indexes': ['is_active', 'updated_at']
     }
 

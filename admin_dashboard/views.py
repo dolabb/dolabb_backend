@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from admin_dashboard.services import (
     DashboardService, UserManagementService, ListingManagementService,
-    TransactionService, CashoutService, FeeSettingsService, DisputeService
+    TransactionService, CashoutService, FeeSettingsService, DisputeService,
+    HeroSectionService
 )
 from authentication.models import Admin
 from affiliates.services import AffiliateService
@@ -984,6 +985,123 @@ def get_notification_templates(request):
             'success': True,
             'templates': templates
         }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Hero Section Management
+@api_view(['GET'])
+def get_hero_section(request):
+    """Get hero section (admin)"""
+    if not check_admin(request):
+        return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        hero_data = HeroSectionService.get_hero_section(active_only=False)
+        return Response({
+            'success': True,
+            'heroSection': hero_data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_hero_section(request):
+    """Update hero section (admin)"""
+    if not check_admin(request):
+        return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        data = dict(request.data)
+        
+        # Handle image upload if provided
+        if 'image' in request.FILES:
+            import os
+            import uuid
+            from django.conf import settings
+            from django.core.files.storage import default_storage
+            from django.core.files.base import ContentFile
+            
+            image_file = request.FILES['image']
+            
+            # Validate file size (max 10MB for hero images)
+            max_size = 10 * 1024 * 1024  # 10MB
+            if image_file.size > max_size:
+                return Response({
+                    'success': False,
+                    'error': 'File size too large. Maximum size is 10MB'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+            if image_file.content_type not in allowed_types:
+                return Response({
+                    'success': False,
+                    'error': f'Invalid file type. Allowed types: JPEG, JPG, PNG, GIF, WEBP'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Generate unique filename
+            file_extension = os.path.splitext(image_file.name)[1]
+            unique_filename = f"hero_{uuid.uuid4()}{file_extension}"
+            
+            # Read file content
+            image_bytes = b''
+            for chunk in image_file.chunks():
+                image_bytes += chunk
+            
+            # Try to upload to VPS if configured, otherwise use local storage
+            vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+            if isinstance(vps_enabled, str):
+                vps_enabled = vps_enabled.lower() == 'true'
+            
+            absolute_url = None
+            
+            if vps_enabled:
+                try:
+                    from storage.vps_helper import upload_file_to_vps
+                    success, result = upload_file_to_vps(
+                        image_bytes,
+                        'uploads/hero',
+                        unique_filename
+                    )
+                    if success:
+                        absolute_url = result
+                except Exception as e:
+                    import logging
+                    logging.error(f"VPS upload error: {str(e)}, falling back to local storage")
+                    vps_enabled = False
+            
+            if not vps_enabled or not absolute_url:
+                # Local storage fallback
+                upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'hero')
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                file_path = os.path.join(upload_dir, unique_filename)
+                
+                # Save file
+                with open(file_path, 'wb+') as destination:
+                    destination.write(image_bytes)
+                
+                # Generate absolute URL
+                media_url = settings.MEDIA_URL.rstrip('/')
+                if not media_url.startswith('/'):
+                    media_url = '/' + media_url
+                file_url = f"{media_url}/uploads/hero/{unique_filename}"
+                absolute_url = request.build_absolute_uri(file_url)
+            
+            data['imageUrl'] = absolute_url
+        
+        # Update hero section
+        hero_data = HeroSectionService.update_hero_section(data)
+        
+        return Response({
+            'success': True,
+            'message': 'Hero section updated successfully',
+            'heroSection': hero_data
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -2,7 +2,7 @@
 Admin Dashboard services
 """
 from datetime import datetime, timedelta
-from admin_dashboard.models import FeeSettings, CashoutRequest, Dispute, ActivityLog
+from admin_dashboard.models import FeeSettings, CashoutRequest, Dispute, ActivityLog, HeroSection
 from authentication.models import User, Admin
 from products.models import Product, Order, Offer
 from affiliates.models import AffiliatePayoutRequest
@@ -946,4 +946,118 @@ class DisputeService:
                 'name': 'Admin User'
             }
         }
+
+
+class HeroSectionService:
+    """Hero section service"""
+    
+    @staticmethod
+    def get_hero_section(active_only=False):
+        """Get hero section"""
+        if active_only:
+            hero = HeroSection.objects(is_active=True).first()
+        else:
+            hero = HeroSection.objects().first()
+        
+        if not hero:
+            # Return default values if no hero section exists
+            return {
+                'id': None,
+                'backgroundType': 'image',
+                'imageUrl': '',
+                'singleColor': '#4F46E5',
+                'gradientColors': ['#667eea', '#764ba2'],
+                'gradientDirection': 'to right',
+                'title': 'Welcome to Dolabb',
+                'subtitle': 'Your marketplace for amazing products',
+                'buttonText': 'Get Started',
+                'buttonLink': '/products',
+                'textColor': '#FFFFFF',
+                'isActive': True,
+                'createdAt': None,
+                'updatedAt': None
+            }
+        
+        return {
+            'id': str(hero.id),
+            'backgroundType': hero.background_type,
+            'imageUrl': hero.image_url or '',
+            'singleColor': hero.single_color or '#4F46E5',
+            'gradientColors': hero.gradient_colors or ['#667eea', '#764ba2'],
+            'gradientDirection': hero.gradient_direction or 'to right',
+            'title': hero.title,
+            'subtitle': hero.subtitle or '',
+            'buttonText': hero.button_text or '',
+            'buttonLink': hero.button_link or '',
+            'textColor': hero.text_color or '#FFFFFF',
+            'isActive': hero.is_active,
+            'createdAt': hero.created_at.isoformat() if hero.created_at else None,
+            'updatedAt': hero.updated_at.isoformat() if hero.updated_at else None
+        }
+    
+    @staticmethod
+    def update_hero_section(data):
+        """Update hero section"""
+        hero = HeroSection.objects().first()
+        
+        if not hero:
+            hero = HeroSection()
+        
+        # Update background settings
+        if 'backgroundType' in data:
+            background_type = data['backgroundType']
+            if background_type not in ['image', 'single_color', 'gradient']:
+                raise ValueError("Invalid background type. Must be 'image', 'single_color', or 'gradient'")
+            hero.background_type = background_type
+        
+        if 'imageUrl' in data:
+            hero.image_url = data['imageUrl']
+        
+        if 'singleColor' in data:
+            # Validate hex color format
+            color = data['singleColor']
+            if color and not color.startswith('#'):
+                raise ValueError("Color must be in hex format (e.g., '#FF5733')")
+            hero.single_color = color
+        
+        if 'gradientColors' in data:
+            colors = data['gradientColors']
+            if colors:
+                # Validate all colors are hex format
+                for color in colors:
+                    if color and not color.startswith('#'):
+                        raise ValueError(f"Gradient color '{color}' must be in hex format (e.g., '#FF5733')")
+            hero.gradient_colors = colors
+        
+        if 'gradientDirection' in data:
+            hero.gradient_direction = data['gradientDirection']
+        
+        # Update text content
+        if 'title' in data:
+            hero.title = data['title']
+        
+        if 'subtitle' in data:
+            hero.subtitle = data.get('subtitle', '')
+        
+        if 'buttonText' in data:
+            hero.button_text = data.get('buttonText', '')
+        
+        if 'buttonLink' in data:
+            hero.button_link = data.get('buttonLink', '')
+        
+        # Update text color
+        if 'textColor' in data:
+            color = data['textColor']
+            if color and not color.startswith('#'):
+                raise ValueError("Text color must be in hex format (e.g., '#FFFFFF')")
+            hero.text_color = color
+        
+        # Update status
+        if 'isActive' in data:
+            hero.is_active = bool(data['isActive'])
+        
+        hero.updated_at = datetime.utcnow()
+        hero.save()
+        
+        return HeroSectionService.get_hero_section()
 

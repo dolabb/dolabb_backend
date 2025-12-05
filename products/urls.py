@@ -17,5 +17,8 @@ urlpatterns = [
     path('<str:product_id>/save/', views.save_product, name='save_product'),
     path('<str:product_id>/unsave/', views.unsave_product, name='unsave_product'),
     path('<str:product_id>/', views.get_product_detail, name='product_detail'),
+    
+    # Public Hero Section
+    path('hero-section/', views.get_hero_section_public, name='get_hero_section_public'),
 ]
 

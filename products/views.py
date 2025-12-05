@@ -719,3 +719,17 @@ def get_trending_products(request):
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_hero_section_public(request):
+    """Get hero section (public endpoint)"""
+    try:
+        from admin_dashboard.services import HeroSectionService
+        hero_data = HeroSectionService.get_hero_section(active_only=True)
+        return Response({
+            'success': True,
+            'heroSection': hero_data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

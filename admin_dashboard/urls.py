@@ -76,5 +76,9 @@ urlpatterns = [
     # Notification Management - Additional
     path('notifications/<str:notification_id>/toggle/', views.toggle_notification_status, name='toggle_notification_status'),
     path('notifications/templates/', views.get_notification_templates, name='get_notification_templates'),
+    
+    # Hero Section Management
+    path('hero-section/', views.get_hero_section, name='get_hero_section'),
+    path('hero-section/update/', views.update_hero_section, name='update_hero_section'),
 ]
 
