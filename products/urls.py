@@ -14,11 +14,13 @@ urlpatterns = [
     path('<str:product_id>/update/', views.update_product, name='update_product'),
     path('<str:product_id>/delete/', views.delete_product, name='delete_product'),
     path('cart/', views.get_cart, name='get_cart'),
+    # Public Hero Section - Must come before product_id routes to avoid route conflicts
+    path('hero-section/', views.get_hero_section_public, name='get_hero_section_public'),
+    # Product ID routes - Must come after specific routes
+    path('<str:product_id>/update/', views.update_product, name='update_product'),
+    path('<str:product_id>/delete/', views.delete_product, name='delete_product'),
     path('<str:product_id>/save/', views.save_product, name='save_product'),
     path('<str:product_id>/unsave/', views.unsave_product, name='unsave_product'),
     path('<str:product_id>/', views.get_product_detail, name='product_detail'),
-    
-    # Public Hero Section
-    path('hero-section/', views.get_hero_section_public, name='get_hero_section_public'),
 ]
 
