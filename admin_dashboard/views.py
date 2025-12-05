@@ -1015,6 +1015,23 @@ def update_hero_section(request):
     try:
         data = dict(request.data)
         
+        # Normalize FormData values (they might come as lists)
+        for key, value in data.items():
+            if isinstance(value, list) and len(value) == 1:
+                # Single item in list, extract it
+                data[key] = value[0]
+            elif isinstance(value, list) and len(value) > 1:
+                # Multiple items - keep as list for arrays
+                data[key] = value
+            # Handle gradientColors JSON string
+            if key == 'gradientColors' and isinstance(data.get(key), str):
+                try:
+                    import json
+                    data[key] = json.loads(data[key])
+                except:
+                    # If not JSON, try splitting by comma
+                    data[key] = [c.strip() for c in data[key].split(',') if c.strip()]
+        
         # Handle image upload if provided
         if 'image' in request.FILES:
             import os

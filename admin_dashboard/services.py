@@ -1006,8 +1006,25 @@ class HeroSectionService:
         # Update background settings
         if 'backgroundType' in data:
             background_type = data['backgroundType']
+            # Handle if it comes as a list (from FormData)
+            if isinstance(background_type, list):
+                background_type = background_type[0] if background_type else None
+            # Normalize: strip whitespace and convert to lowercase
+            if background_type:
+                background_type = str(background_type).strip().lower()
+            # Map common variations to valid values
+            type_mapping = {
+                'singlecolor': 'single_color',
+                'single-color': 'single_color',
+                'single color': 'single_color',
+                'gradient': 'gradient',
+                'image': 'image',
+                'img': 'image'
+            }
+            background_type = type_mapping.get(background_type, background_type)
+            
             if background_type not in ['image', 'single_color', 'gradient']:
-                raise ValueError("Invalid background type. Must be 'image', 'single_color', or 'gradient'")
+                raise ValueError(f"Invalid background type: '{data.get('backgroundType')}' (normalized: '{background_type}'). Must be 'image', 'single_color', or 'gradient'")
             hero.background_type = background_type
         
         if 'imageUrl' in data:
@@ -1022,12 +1039,27 @@ class HeroSectionService:
         
         if 'gradientColors' in data:
             colors = data['gradientColors']
+            # Handle if it comes as JSON string
+            if isinstance(colors, str):
+                try:
+                    import json
+                    colors = json.loads(colors)
+                except:
+                    # If not JSON, try splitting by comma
+                    colors = [c.strip() for c in colors.split(',') if c.strip()]
+            # Handle if it comes as a list with single JSON string
+            elif isinstance(colors, list) and len(colors) == 1 and isinstance(colors[0], str):
+                try:
+                    import json
+                    colors = json.loads(colors[0])
+                except:
+                    colors = colors
             if colors:
                 # Validate all colors are hex format
                 for color in colors:
-                    if color and not color.startswith('#'):
+                    if color and not str(color).startswith('#'):
                         raise ValueError(f"Gradient color '{color}' must be in hex format (e.g., '#FF5733')")
-            hero.gradient_colors = colors
+            hero.gradient_colors = colors if colors else []
         
         if 'gradientDirection' in data:
             hero.gradient_direction = data['gradientDirection']
