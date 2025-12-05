@@ -3,12 +3,13 @@ HTML Email Templates for Notifications
 Professional styled email templates with logo, banner, and social icons
 """
 from django.conf import settings
+import html
 
 
 # Email configuration (you can customize these)
 EMAIL_CONFIG = {
     'logo_url': 'https://www.dolabb.com/media/uploads/profiles/a7150ccb-1a9e-4002-b6f5-314b0e8225c2.png',  # Update with your logo URL
-    'company_name': 'Dوُlabb',
+    'company_name': 'Dوُlabb',  # Mixed Arabic/English company name
     'company_url': 'https://dolabb.com/',  # Update with your website URL
     'support_email': 'support@dolabb.com',
     'social_links': {
@@ -76,24 +77,31 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
         social_icons += '</tr></table></td></tr>'
     
     # Footer text based on language
+    # Get company name - ensure it's properly handled for mixed Arabic/English
+    company_name = config['company_name']
+    
     if footer_text:
         footer_content = footer_text
     else:
         if is_rtl:
-            footer_content = f"شكراً من فريق {config['company_name']}!"
+            footer_content = f"شكراً من فريق {company_name}!"
         else:
-            footer_content = f"Thanks from the {config['company_name']} team!"
+            footer_content = f"Thanks from the {company_name} team!"
     
     # Font family for Arabic support
     font_family = "'Segoe UI', 'Tahoma', 'Arial', sans-serif" if is_rtl else "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    
+    # Escape title for HTML (but keep company name as-is to preserve Arabic characters)
+    title_encoded = html.escape(title)
     
     html_template = f"""
     <!DOCTYPE html>
     <html lang="{language}" dir="{text_direction}">
     <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{title}</title>
+        <title>{title_encoded}</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: {font_family}; background-color: #ffffff; direction: {text_direction};">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; padding: 40px 20px; direction: {text_direction};">
@@ -104,7 +112,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
                         <tr>
                             <td align="center" style="padding: 50px 40px 30px; background-color: #ffffff; border-radius: 12px 12px 0 0;">
                                 <img src="{config['logo_url']}" 
-                                     alt="{config['company_name']} Logo" 
+                                     alt="{company_name} Logo" 
                                      width="140" 
                                      height="auto" 
                                      style="max-width: 140px; height: auto; display: block;">
