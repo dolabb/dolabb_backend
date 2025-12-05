@@ -29,23 +29,29 @@ class NotificationHelper:
             UserNotification object or None if failed
         """
         try:
-            # Get template
-            template = get_notification_template(category, template_key)
-            if not template:
-                print(f"Warning: Template not found for category={category}, key={template_key}")
-                return None
-            
-            # Get user based on type
+            # Get user based on type first to get language preference
             if user_type == 'affiliate':
                 user = Affiliate.objects(id=user_id).first()
                 if not user:
                     print(f"Warning: Affiliate not found with id={user_id}")
                     return None
+                # Affiliates don't have language field, default to 'en'
+                user_language = 'en'
             else:
                 user = User.objects(id=user_id).first()
                 if not user:
                     print(f"Warning: User not found with id={user_id}")
                     return None
+                # Get user's language preference, default to 'en'
+                user_language = getattr(user, 'language', 'en')
+                if user_language not in ['en', 'ar']:
+                    user_language = 'en'
+            
+            # Get template with user's language
+            template = get_notification_template(category, template_key, user_language)
+            if not template:
+                print(f"Warning: Template not found for category={category}, key={template_key}")
+                return None
             
             # Create user notification
             user_notification = UserNotification(
@@ -103,7 +109,8 @@ class NotificationHelper:
                         notification_title=template['title'],
                         notification_message=template['message'],
                         notification_type=email_notification_type,
-                        user_name=user_name
+                        user_name=user_name,
+                        language=user_language
                     )
             except Exception as e:
                 print(f"Warning: Failed to send email notification: {str(e)}")

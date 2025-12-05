@@ -97,6 +97,7 @@ def user_verify_otp(request):
                 'country_code': user.country_code or '',
                 'dial_code': user.dial_code or '',
                 'status': user.status,
+                'language': getattr(user, 'language', 'en'),  # Default to 'en' if not set
                 'join_date': user.join_date.isoformat() if user.join_date else None,
                 'created_at': user.created_at.isoformat() if user.created_at else None
             },

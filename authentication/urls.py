@@ -25,6 +25,7 @@ urlpatterns = [
     path('reset-password/', views.user_reset_password, name='user_reset_password'),
     path('profile/', views.get_profile, name='get_profile'),
     path('profile/update/', views.update_profile, name='update_profile'),
+    path('language/update/', views.update_language, name='update_language'),
     
     # Affiliate auth
     path('affiliate/signup/', views.affiliate_signup, name='affiliate_signup'),

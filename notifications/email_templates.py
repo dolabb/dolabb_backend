@@ -8,7 +8,7 @@ from django.conf import settings
 # Email configuration (you can customize these)
 EMAIL_CONFIG = {
     'logo_url': 'https://www.dolabb.com/media/uploads/profiles/a7150ccb-1a9e-4002-b6f5-314b0e8225c2.png',  # Update with your logo URL
-    'company_name': 'Dolabb',
+    'company_name': 'Dوُlabb',
     'company_url': 'https://dolabb.com/',  # Update with your website URL
     'support_email': 'support@dolabb.com',
     'social_links': {
@@ -22,7 +22,7 @@ EMAIL_CONFIG = {
 }
 
 
-def get_email_base_template(title, content, user_name=None, footer_text=None):
+def get_email_base_template(title, content, user_name=None, footer_text=None, language='en'):
     """
     Generate a professional HTML email template
     
@@ -31,14 +31,23 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
         content: Main email content (HTML or text)
         user_name: Optional user name for personalized greeting
         footer_text: Optional custom footer text
+        language: Language code ('en' or 'ar') for RTL support
     
     Returns:
         Complete HTML email template
     """
     config = EMAIL_CONFIG
     
-    # Personalized greeting
-    greeting = f"Hi {user_name}," if user_name else "Hi,"
+    # Determine if RTL is needed
+    is_rtl = language == 'ar'
+    text_direction = 'rtl' if is_rtl else 'ltr'
+    text_align = 'right' if is_rtl else 'left'
+    
+    # Personalized greeting based on language
+    if is_rtl:
+        greeting = f"مرحباً {user_name}،" if user_name else "مرحباً،"
+    else:
+        greeting = f"Hi {user_name}," if user_name else "Hi,"
     
     # Social icons HTML
     social_icons = ""
@@ -66,22 +75,31 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
         
         social_icons += '</tr></table></td></tr>'
     
-    # Footer text
-    footer_content = footer_text or f"Thanks from the {config['company_name']} team!"
+    # Footer text based on language
+    if footer_text:
+        footer_content = footer_text
+    else:
+        if is_rtl:
+            footer_content = f"شكراً من فريق {config['company_name']}!"
+        else:
+            footer_content = f"Thanks from the {config['company_name']} team!"
+    
+    # Font family for Arabic support
+    font_family = "'Segoe UI', 'Tahoma', 'Arial', sans-serif" if is_rtl else "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     
     html_template = f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="{language}" dir="{text_direction}">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{title}</title>
     </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ffffff;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; padding: 40px 20px;">
+    <body style="margin: 0; padding: 0; font-family: {font_family}; background-color: #ffffff; direction: {text_direction};">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; padding: 40px 20px; direction: {text_direction};">
             <tr>
                 <td align="center">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="background-color: #ffffff; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="background-color: #ffffff; max-width: 600px; border: 1px solid #e5e7eb; border-radius: 8px; direction: {text_direction};">
                         <!-- Logo at Top -->
                         <tr>
                             <td align="center" style="padding: 50px 40px 30px; background-color: #ffffff; border-radius: 12px 12px 0 0;">
@@ -95,8 +113,8 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
                         
                         <!-- Greeting -->
                         <tr>
-                            <td align="left" style="padding: 0 50px 25px; background-color: #ffffff;">
-                                <h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700; line-height: 1.2; letter-spacing: -0.5px;">
+                            <td align="{text_align}" style="padding: 0 50px 25px; background-color: #ffffff;">
+                                <h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700; line-height: 1.2; letter-spacing: -0.5px; text-align: {text_align}; direction: {text_direction};">
                                     {greeting}
                                 </h1>
                             </td>
@@ -104,8 +122,8 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
                         
                         <!-- Content Section -->
                         <tr>
-                            <td align="left" style="padding: 0 50px 40px; background-color: #ffffff;">
-                                <div style="color: #374151; font-size: 16px; line-height: 1.7; text-align: left;">
+                            <td align="{text_align}" style="padding: 0 50px 40px; background-color: #ffffff;">
+                                <div style="color: #374151; font-size: 16px; line-height: 1.7; text-align: {text_align}; direction: {text_direction};">
                                     {content}
                                 </div>
                             </td>
@@ -141,7 +159,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None):
 
 
 def render_notification_email(notification_title, notification_message, notification_type='info', 
-                             user_name=None, custom_footer=None):
+                             user_name=None, custom_footer=None, language='en'):
     """
     Render a notification email with professional styling
     
@@ -151,6 +169,7 @@ def render_notification_email(notification_title, notification_message, notifica
         notification_type: Type of notification ('info', 'success', 'warning', 'error')
         user_name: Optional user name for personalized greeting
         custom_footer: Optional custom footer text
+        language: Language code ('en' or 'ar') for RTL support
     
     Returns:
         Complete HTML email template
@@ -159,8 +178,10 @@ def render_notification_email(notification_title, notification_message, notifica
     if not notification_message.startswith('<'):
         # Convert line breaks to <br> tags
         notification_message = notification_message.replace('\n', '<br>')
-        # Wrap in paragraph
-        notification_message = f'<p style="margin: 0 0 15px;">{notification_message}</p>'
+        # Wrap in paragraph with appropriate direction
+        text_align = 'right' if language == 'ar' else 'left'
+        text_direction = 'rtl' if language == 'ar' else 'ltr'
+        notification_message = f'<p style="margin: 0 0 15px; text-align: {text_align}; direction: {text_direction};">{notification_message}</p>'
     
     # Icons removed as requested
     
@@ -168,12 +189,13 @@ def render_notification_email(notification_title, notification_message, notifica
         title=notification_title,
         content=notification_message,
         user_name=user_name,
-        footer_text=custom_footer
+        footer_text=custom_footer,
+        language=language
     )
 
 
 def send_notification_email(email, notification_title, notification_message, notification_type='info',
-                           user_name=None, custom_footer=None):
+                           user_name=None, custom_footer=None, language='en'):
     """
     Send a styled notification email via Resend
     
@@ -184,6 +206,7 @@ def send_notification_email(email, notification_title, notification_message, not
         notification_type: Type of notification
         user_name: Optional user name for personalized greeting
         custom_footer: Optional custom footer text
+        language: Language code ('en' or 'ar') for RTL support
     
     Returns:
         Resend email response
@@ -201,7 +224,8 @@ def send_notification_email(email, notification_title, notification_message, not
             notification_message=notification_message,
             notification_type=notification_type,
             user_name=user_name,
-            custom_footer=custom_footer
+            custom_footer=custom_footer,
+            language=language
         )
         
         # Send via Resend

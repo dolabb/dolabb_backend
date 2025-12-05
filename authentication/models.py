@@ -129,6 +129,7 @@ class User(Document):
     account_holder_name = StringField(max_length=200)
     role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
     status = StringField(choices=['active', 'suspended', 'deactivated'], default='active')
+    language = StringField(choices=['en', 'ar'], default='en', max_length=2)  # Language preference for notifications
     otp = EmbeddedDocumentField(OTPEmbedded)
     join_date = DateTimeField(default=datetime.utcnow)
     created_at = DateTimeField(default=datetime.utcnow)

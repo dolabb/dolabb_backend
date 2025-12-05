@@ -260,6 +260,7 @@ def user_login(request):
                 'country_code': user.country_code or '',
                 'dial_code': user.dial_code or '',
                 'status': user.status,
+                'language': getattr(user, 'language', 'en'),  # Default to 'en' if not set
                 'join_date': user.join_date.isoformat() if user.join_date else None,
                 'created_at': user.created_at.isoformat() if user.created_at else None
             },
@@ -377,7 +378,8 @@ def get_profile(request):
                 'zip_code': safe_get(user, 'zip_code') or '',
                 'house_number': safe_get(user, 'house_number') or '',
                 'joined_date': get_date_safe(user, 'join_date', 'created_at'),
-                'role': safe_get(user, 'role', 'buyer')
+                'role': safe_get(user, 'role', 'buyer'),
+                'language': getattr(user, 'language', 'en')  # Default to 'en' if not set
             }
             
             # Add seller rating and review count if user is a seller
@@ -528,6 +530,16 @@ def update_profile(request):
             user.account_holder_name = data['accountHolderName']
             bank_details_updated = True
         
+        # Language preference
+        if 'language' in data:
+            language = data['language']
+            if language in ['en', 'ar']:
+                user.language = language
+        elif 'preferredLanguage' in data:
+            language = data['preferredLanguage']
+            if language in ['en', 'ar']:
+                user.language = language
+        
         user.save()
         
         # Send notification if bank details were updated
@@ -554,11 +566,51 @@ def update_profile(request):
             'zip_code': user.zip_code or '',
             'house_number': user.house_number or '',
             'joined_date': user.join_date,
-            'role': user.role
+            'role': user.role,
+            'language': getattr(user, 'language', 'en')
         })
         return Response({'success': True, 'user': serializer.data}, status=status.HTTP_200_OK)
     
     return Response({'success': False, 'error': 'Invalid user'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+@permission_classes([AllowAny])
+def update_language(request):
+    """Update user language preference - works with or without token"""
+    try:
+        language = request.data.get('language') or request.data.get('preferredLanguage')
+        
+        if not language:
+            return Response({'success': False, 'error': 'Language is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if language not in ['en', 'ar']:
+            return Response({'success': False, 'error': 'Invalid language. Must be "en" or "ar"'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user is authenticated
+        if hasattr(request, 'user') and request.user and hasattr(request.user, 'username'):
+            # User is authenticated - update language in database
+            user = request.user
+            user.language = language
+            user.save()
+            
+            return Response({
+                'success': True,
+                'message': f'Language updated to {language}',
+                'language': user.language,
+                'authenticated': True
+            }, status=status.HTTP_200_OK)
+        else:
+            # User is not authenticated - just return the language (frontend can store it locally)
+            return Response({
+                'success': True,
+                'message': f'Language preference set to {language}',
+                'language': language,
+                'authenticated': False
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Affiliate Authentication
