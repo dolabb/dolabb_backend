@@ -152,9 +152,15 @@ def resend_otp(request):
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Get language from request (frontend can send it from localStorage for guest users)
+        language = request.data.get('language') or request.data.get('preferredLanguage')
+        if language and language not in ['en', 'ar']:
+            language = None  # Invalid language, will default to 'en'
+        
         result = AuthService.resend_otp_combined(
             serializer.validated_data['email'],
-            serializer.validated_data['user_type']
+            serializer.validated_data['user_type'],
+            language=language
         )
         
         return Response({

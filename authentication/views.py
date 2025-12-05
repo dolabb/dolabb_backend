@@ -193,6 +193,11 @@ def user_signup(request):
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Get language from request (frontend can send it from localStorage for guest users)
+        language = request.data.get('language') or request.data.get('preferredLanguage')
+        if language and language not in ['en', 'ar']:
+            language = None  # Invalid language, will default to 'en'
+        
         temp_user, otp = AuthService.user_signup(
             serializer.validated_data['full_name'],
             serializer.validated_data['username'],
@@ -204,7 +209,8 @@ def user_signup(request):
             serializer.validated_data.get('dial_code'),
             serializer.validated_data.get('profile_image_url'),
             serializer.validated_data.get('role', 'buyer'),
-            request
+            request,
+            language=language
         )
         return Response({
             'success': True,
@@ -276,13 +282,18 @@ def user_login(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def user_forgot_password(request):
-    """User forgot password"""
+    """User forgot password - accepts optional language parameter from frontend"""
     serializer = UserForgotPasswordSerializer(data=request.data)
     if not serializer.is_valid():
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        otp = AuthService.user_forgot_password(serializer.validated_data['email'])
+        # Get language from request (frontend can send it from localStorage for guest users)
+        language = request.data.get('language') or request.data.get('preferredLanguage')
+        if language and language not in ['en', 'ar']:
+            language = None  # Invalid language, will use user's preference
+        
+        otp = AuthService.user_forgot_password(serializer.validated_data['email'], language=language)
         return Response({
             'success': True,
             'message': 'Reset OTP sent to email',

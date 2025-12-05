@@ -6,8 +6,15 @@ from notifications.templates import get_notification_template
 from django.conf import settings
 
 
-def send_otp_email(email, otp_code, name):
-    """Send OTP email via Resend using notification template"""
+def send_otp_email(email, otp_code, name, language='en'):
+    """Send OTP email via Resend using notification template
+    
+    Args:
+        email: Recipient email address
+        otp_code: OTP code to send
+        name: User's name
+        language: Language code ('en' or 'ar'), defaults to 'en'
+    """
     try:
         # Validate email parameters
         if not email or not email.strip():
@@ -25,13 +32,23 @@ def send_otp_email(email, otp_code, name):
                 "Please set RESEND_FROM_EMAIL to a verified domain email (e.g., no-reply@dolabb.com)"
             )
         
-        # Get OTP template
-        template = get_notification_template('buyer', 'otp_verification')
+        # Validate language, default to 'en' if invalid
+        if language not in ['en', 'ar']:
+            language = 'en'
+        
+        # Get OTP template with language
+        template = get_notification_template('buyer', 'otp_verification', language)
         if not template:
             raise ValueError("OTP email template not found")
         
         # Format message with OTP code
         message = template['message'].format(otp_code=f'<strong style="font-size: 24px; color: #1f2937; letter-spacing: 4px;">{otp_code}</strong>')
+        
+        # Footer text based on language
+        if language == 'ar':
+            footer_text = "إذا لم تطلب هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني."
+        else:
+            footer_text = "If you didn't request this code, please ignore this email."
         
         # Send using notification email system
         email_response = send_notification_email(
@@ -40,7 +57,8 @@ def send_otp_email(email, otp_code, name):
             notification_message=message,
             notification_type='info',
             user_name=name,
-            custom_footer="If you didn't request this code, please ignore this email."
+            custom_footer=footer_text,
+            language=language
         )
         
         return email_response

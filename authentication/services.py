@@ -255,8 +255,12 @@ class AuthService:
         return admin
     
     @staticmethod
-    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer', request=None):
-        """User signup - stores in temp_users until OTP verification"""
+    def user_signup(full_name, username, email, phone, password, confirm_password, country_code=None, dial_code=None, profile_image_url=None, role='buyer', request=None, language=None):
+        """User signup - stores in temp_users until OTP verification
+        
+        Args:
+            language: Optional language preference ('en' or 'ar') for OTP email
+        """
         if password != confirm_password:
             raise ValueError("Passwords do not match")
         
@@ -276,6 +280,9 @@ class AuthService:
         processed_profile_image = None
         if profile_image_url:
             processed_profile_image = AuthService.process_profile_image(profile_image_url, request)
+        
+        # Get language preference: use provided language, or default to 'en'
+        user_language = language if language in ['en', 'ar'] else 'en'
         
         # Check if user already exists in temp_users collection (by email)
         existing_temp = TempUser.objects(email=email).first()
@@ -311,7 +318,7 @@ class AuthService:
         # Send email BEFORE saving to database
         # If email fails, user won't be saved
         try:
-            send_otp_email(email, otp_code, full_name)
+            send_otp_email(email, otp_code, full_name, user_language)
         except Exception as e:
             # Re-raise with more context
             raise Exception(f"Failed to send OTP email. Please check your email configuration. Error: {str(e)}")
@@ -421,8 +428,13 @@ class AuthService:
         return user, token
     
     @staticmethod
-    def user_resend_otp(email):
-        """Resend OTP for user - works with temp_users"""
+    def user_resend_otp(email, language=None):
+        """Resend OTP for user - works with temp_users
+        
+        Args:
+            email: User's email address
+            language: Optional language preference ('en' or 'ar')
+        """
         # Check temp_users first
         temp_user = TempUser.objects(email=email).first()
         if not temp_user:
@@ -432,16 +444,24 @@ class AuthService:
                 raise ValueError("User is already verified. Please login instead.")
             raise ValueError("User not found")
         
+        # Get language preference: use provided language, or default to 'en'
+        user_language = language if language in ['en', 'ar'] else 'en'
+        
         # Generate new OTP
         otp_code = temp_user.generate_otp(settings.OTP_EXPIRY_SECONDS)
         temp_user.save()
         
-        send_otp_email(email, otp_code, temp_user.full_name)
+        send_otp_email(email, otp_code, temp_user.full_name, user_language)
         return otp_code
     
     @staticmethod
-    def user_forgot_password(email):
-        """User forgot password - only verified users can reset password"""
+    def user_forgot_password(email, language=None):
+        """User forgot password - only verified users can reset password
+        
+        Args:
+            email: User's email address
+            language: Optional language preference ('en' or 'ar'). If not provided, uses user's saved preference.
+        """
         # Check if user exists in temp_users (not verified)
         temp_user = TempUser.objects(email=email).first()
         if temp_user:
@@ -456,10 +476,17 @@ class AuthService:
         if user.status != 'active':
             raise ValueError("Account is suspended or deactivated. Cannot reset password.")
         
+        # Get language preference: use provided language, or user's saved preference, or default to 'en'
+        user_language = language
+        if not user_language:
+            user_language = getattr(user, 'language', 'en')
+        if user_language not in ['en', 'ar']:
+            user_language = 'en'
+        
         otp_code = user.generate_otp(settings.OTP_EXPIRY_SECONDS)
         user.save()
         
-        send_otp_email(email, otp_code, user.full_name)
+        send_otp_email(email, otp_code, user.full_name, user_language)
         return otp_code
     
     @staticmethod
@@ -673,15 +700,21 @@ class AuthService:
             raise ValueError(f"Invalid user_type. Must be 'admin', 'user', or 'affiliate'")
     
     @staticmethod
-    def resend_otp_combined(email, user_type):
-        """Combined resend OTP for admin, user, and affiliate"""
+    def resend_otp_combined(email, user_type, language=None):
+        """Combined resend OTP for admin, user, and affiliate
+        
+        Args:
+            email: User's email address
+            user_type: 'admin', 'user', or 'affiliate'
+            language: Optional language preference ('en' or 'ar') for user type
+        """
         user_type = user_type.lower()
         
         if user_type == 'admin':
             otp = AuthService.admin_resend_otp(email)
             return {'otp': otp}
         elif user_type == 'user':
-            otp = AuthService.user_resend_otp(email)
+            otp = AuthService.user_resend_otp(email, language=language)
             return {'otp': otp}
         elif user_type == 'affiliate':
             # Affiliate resend OTP (if needed, implement similar to admin)
