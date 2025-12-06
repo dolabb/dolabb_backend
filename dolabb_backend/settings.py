@@ -150,6 +150,12 @@ REST_FRAMEWORK = {
 
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
+    # Production domains
+    "https://www.dolabb.com",
+    "https://dolabb.com",
+    "http://www.dolabb.com",
+    "http://dolabb.com",
+    # Development origins
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:5173",  # Vite default port
