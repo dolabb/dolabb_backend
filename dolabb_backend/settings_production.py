@@ -190,8 +190,10 @@ else:
         # Production domains
         "https://www.dolabb.com",
         "https://dolabb.com",
+        "https://admin.dolabb.com",
         "http://www.dolabb.com",
         "http://dolabb.com",
+        "http://admin.dolabb.com",
         # Development origins
         "http://localhost:3000",
         "http://localhost:3001",
