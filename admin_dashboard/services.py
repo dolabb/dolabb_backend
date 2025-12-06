@@ -960,23 +960,8 @@ class HeroSectionService:
             hero = HeroSection.objects().first()
         
         if not hero:
-            # Return default values if no hero section exists
-            return {
-                'id': None,
-                'backgroundType': 'image',
-                'imageUrl': '',
-                'singleColor': '#4F46E5',
-                'gradientColors': ['#667eea', '#764ba2'],
-                'gradientDirection': 'to right',
-                'title': 'Welcome to Dolabb',
-                'subtitle': 'Your marketplace for amazing products',
-                'buttonText': 'Get Started',
-                'buttonLink': '/products',
-                'textColor': '#FFFFFF',
-                'isActive': True,
-                'createdAt': None,
-                'updatedAt': None
-            }
+            # Return None if no hero section exists (no default data)
+            return None
         
         return {
             'id': str(hero.id),
