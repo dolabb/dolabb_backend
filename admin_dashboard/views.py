@@ -260,6 +260,50 @@ def hide_listing(request, listing_id):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['PUT'])
+def update_listing(request, listing_id):
+    """Update listing (admin can update any field including currency)"""
+    if not check_admin(request):
+        return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        listing = ListingManagementService.update_listing(listing_id, request.data)
+        
+        # Get seller info
+        seller = None
+        if listing.seller_id:
+            from authentication.models import User
+            seller = User.objects(id=listing.seller_id.id).first()
+        
+        # Build response matching the listings format
+        listing_data = {
+            '_id': str(listing.id),
+            'title': listing.title,
+            'description': listing.description or '',
+            'sellerId': str(listing.seller_id.id),
+            'SellerName': listing.seller_name or (seller.full_name if seller else ''),
+            'category': listing.category,
+            'price': listing.price,
+            'currency': listing.currency or 'SAR',
+            'status': listing.status,
+            'reviewed': listing.reviewed,
+            'approved': listing.approved,
+            'createdAt': listing.created_at.isoformat() if listing.created_at else None,
+            'updatedAt': listing.updated_at.isoformat() if listing.updated_at else None,
+            'images': listing.images or []
+        }
+        
+        return Response({
+            'success': True,
+            'message': 'Listing updated successfully',
+            'listing': listing_data
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # Transactions
 @api_view(['GET'])
 def get_transactions(request):

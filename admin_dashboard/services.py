@@ -355,6 +355,7 @@ class ListingManagementService:
                 'SellerName': listing.seller_name or (seller.full_name if seller else ''),
                 'category': listing.category,
                 'price': listing.price,
+                'currency': listing.currency or 'SAR',
                 'status': listing.status,
                 'reviewed': listing.reviewed,
                 'approved': listing.approved,
@@ -409,6 +410,90 @@ class ListingManagementService:
         listing.save()
         
         return listing
+    
+    @staticmethod
+    def update_listing(listing_id, data):
+        """Update listing (admin can update any field)"""
+        from datetime import datetime
+        from products.models import ShippingInfo
+        
+        listing = Product.objects(id=listing_id).first()
+        if not listing:
+            raise ValueError("Listing not found")
+        
+        # Update all fields that are provided
+        if 'itemtitle' in data or 'title' in data:
+            listing.title = data.get('itemtitle') or data.get('title')
+        if 'description' in data:
+            listing.description = data['description']
+        if 'price' in data:
+            listing.price = float(data['price'])
+        if 'originalPrice' in data:
+            listing.original_price = float(data['originalPrice'])
+        if 'category' in data:
+            listing.category = data['category']
+        if 'subcategory' in data:
+            listing.subcategory = data['subcategory']
+        if 'brand' in data:
+            listing.brand = data['brand']
+        if 'currency' in data:
+            listing.currency = data['currency']
+        if 'Quantity' in data or 'quantity' in data:
+            listing.quantity = int(data.get('Quantity') or data.get('quantity', 1))
+        if 'Gender' in data or 'gender' in data:
+            listing.gender = data.get('Gender') or data.get('gender')
+        if 'Size' in data or 'size' in data:
+            listing.size = data.get('Size') or data.get('size')
+        if 'Color' in data or 'color' in data:
+            listing.color = data.get('Color') or data.get('color')
+        if 'Condition' in data or 'condition' in data:
+            listing.condition = data.get('Condition') or data.get('condition')
+        if 'SKU/ID (Optional)' in data or 'sku' in data:
+            listing.sku = data.get('SKU/ID (Optional)') or data.get('sku')
+        if 'Tags/Keywords' in data or 'tags' in data:
+            listing.tags = data.get('Tags/Keywords') or data.get('tags', [])
+        if 'Images' in data or 'images' in data:
+            # For admin, accept URLs directly (no base64 processing needed)
+            listing.images = data.get('Images') or data.get('images', [])
+        if 'Shipping Cost' in data or 'shippingCost' in data:
+            listing.shipping_cost = float(data.get('Shipping Cost') or data.get('shippingCost', 0.0))
+        if 'Processing Time (days)' in data or 'processingTimeDays' in data:
+            listing.processing_time_days = int(data.get('Processing Time (days)') or data.get('processingTimeDays', 7))
+        if 'status' in data:
+            listing.status = data['status']
+        if 'approved' in data:
+            listing.approved = data['approved']
+        if 'reviewed' in data:
+            listing.reviewed = data['reviewed']
+        if 'Affiliate Code (Optional)' in data or 'affiliateCode' in data:
+            affiliate_code = data.get('Affiliate Code (Optional)') or data.get('affiliateCode')
+            listing.affiliate_code = affiliate_code if affiliate_code and affiliate_code.strip() else None
+        if 'Tax Percentage' in data or 'taxPercentage' in data:
+            tax_percentage = data.get('Tax Percentage') or data.get('taxPercentage')
+            if tax_percentage is not None:
+                try:
+                    listing.tax_percentage = float(tax_percentage)
+                except (ValueError, TypeError):
+                    listing.tax_percentage = None
+            else:
+                listing.tax_percentage = None
+        
+        # Update shipping_info if shipping fields are provided
+        if 'Shipping Cost' in data or 'Processing Time (days)' in data or 'Shipping Locations' in data:
+            if not listing.shipping_info:
+                listing.shipping_info = ShippingInfo()
+            
+            if 'Shipping Cost' in data:
+                listing.shipping_info.cost = float(data['Shipping Cost'])
+            if 'Processing Time (days)' in data:
+                listing.shipping_info.estimated_days = int(data['Processing Time (days)'])
+            if 'Shipping Locations' in data:
+                listing.shipping_info.locations = data['Shipping Locations']
+        
+        listing.updated_at = datetime.utcnow()
+        listing.save()
+        
+        return listing
 
 
 class TransactionService:
@@ -444,6 +529,7 @@ class TransactionService:
                 'itemTitle': transaction.product_title or (product.title if product else ''),
                 'offerAmount': transaction.offer_price,
                 'originalPrice': transaction.price,
+                'currency': product.currency if product else 'SAR',
                 'dolabbFee': transaction.dolabb_fee,
                 'status': transaction.status,
                 'date': transaction.created_at.isoformat()
@@ -487,6 +573,7 @@ class TransactionService:
                 'title': transaction.product_title or (product.title if product else ''),
                 'price': transaction.price or 0.0
             },
+            'currency': product.currency if product else 'SAR',
             'amount': transaction.total_price or 0.0,
             'shipping_cost': transaction.shipping_cost or 0.0,
             'platform_fee': transaction.dolabb_fee or 0.0,

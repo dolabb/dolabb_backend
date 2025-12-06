@@ -25,6 +25,7 @@ urlpatterns = [
     path('listings/<str:listing_id>/approve/', views.approve_listing, name='approve_listing'),
     path('listings/<str:listing_id>/reject/', views.reject_listing, name='reject_listing'),
     path('listings/<str:listing_id>/hide/', views.hide_listing, name='hide_listing'),
+    path('listings/<str:listing_id>/update/', views.update_listing, name='update_listing'),
     
     # Transactions
     path('transactions/', views.get_transactions, name='get_transactions'),

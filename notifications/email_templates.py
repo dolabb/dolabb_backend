@@ -13,8 +13,14 @@ EMAIL_CONFIG = {
     'company_url': 'https://dolabb.com/',  # Update with your website URL
     'support_email': 'support@dolabb.com',
     'social_links': {
-        'instagram': 'https://www.instagram.com/dolabb.buy.sell.style',
-        'tiktok': 'https://www.tiktok.com/@dolabb.buy.sell.style'
+        'instagram': {
+            'url': 'https://www.instagram.com/dolabb.buy.sell.style',
+            'icon_url': 'https://cdn.dolabb.com/media/uploads/profiles/a4221f40-57dc-45dd-ad8d-f00b74a2d660.jpg'
+        },
+        'tiktok': {
+            'url': 'https://www.tiktok.com/@dolabb.buy.sell.style',
+            'icon_url': 'https://cdn.dolabb.com/media/uploads/profiles/3a790ca8-a900-432a-8a1f-104e0d12fbba.jpg'
+        }
     },
     'app_store_url': 'https://apps.apple.com/app/dolabb',  # Update with your App Store URL
     'play_store_url': 'https://play.google.com/store/apps/details?id=com.dolabb',  # Update with your Play Store URL
@@ -55,11 +61,15 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
     if config['social_links']:
         social_icons = '<tr><td align="center" style="padding: 20px 0 0;"><table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 0 auto;"><tr>'
         
-        if config['social_links'].get('instagram'):
+        # Instagram
+        instagram = config['social_links'].get('instagram')
+        if instagram:
+            instagram_url = instagram.get('url') if isinstance(instagram, dict) else instagram
+            instagram_icon = instagram.get('icon_url') if isinstance(instagram, dict) else 'https://cdn.dolabb.com/media/uploads/profiles/a4221f40-57dc-45dd-ad8d-f00b74a2d660.jpg'
             social_icons += f'''
                         <td style="padding: 0 12px;">
-                            <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
-                                <img src="https://cdn.dolabb.com/media/uploads/profiles/a4221f40-57dc-45dd-ad8d-f00b74a2d660.jpg" 
+                            <a href="{instagram_url}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
+                                <img src="{instagram_icon}" 
                                      alt="Instagram" 
                                      width="28" 
                                      height="28" 
@@ -67,11 +77,16 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
                                      style="width: 28px; height: 28px; display: block; border: 0; outline: none; text-decoration: none;">
                             </a>
                         </td>'''
-        if config['social_links'].get('tiktok'):
+        
+        # TikTok
+        tiktok = config['social_links'].get('tiktok')
+        if tiktok:
+            tiktok_url = tiktok.get('url') if isinstance(tiktok, dict) else tiktok
+            tiktok_icon = tiktok.get('icon_url') if isinstance(tiktok, dict) else 'https://cdn.dolabb.com/media/uploads/profiles/3a790ca8-a900-432a-8a1f-104e0d12fbba.jpg'
             social_icons += f'''
                         <td style="padding: 0 12px;">
-                            <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
-                                <img src="https://cdn.dolabb.com/media/uploads/profiles/3a790ca8-a900-432a-8a1f-104e0d12fbba.jpg" 
+                            <a href="{tiktok_url}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
+                                <img src="{tiktok_icon}" 
                                      alt="TikTok" 
                                      width="28" 
                                      height="28" 
