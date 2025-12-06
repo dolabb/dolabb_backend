@@ -8,7 +8,7 @@ import html
 
 # Email configuration (you can customize these)
 EMAIL_CONFIG = {
-    'logo_url': 'https://www.dolabb.com/media/uploads/profiles/a7150ccb-1a9e-4002-b6f5-314b0e8225c2.png',  # Update with your logo URL
+    'logo_url': 'https://cdn.dolabb.com/media/uploads/profiles/5dcee68d-4713-4743-8da8-f7cc11fc67b7.png',  # Update with your logo URL
     'company_name': 'Dوُlabb',  # Mixed Arabic/English company name
     'company_url': 'https://dolabb.com/',  # Update with your website URL
     'support_email': 'support@dolabb.com',
@@ -59,7 +59,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
             social_icons += f'''
                         <td style="padding: 0 12px;">
                             <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none;">
-                                <img src="https://www.dolabb.com/media/uploads/profiles/f7dd5ad8-fa19-4d95-8d91-9e66901a5222.jpg" 
+                                <img src="https://cdn.dolabb.com/media/uploads/profiles/5dcee68d-4713-4743-8da8-f7cc11fc67b7.png" 
                                      alt="Instagram" width="28" height="28" 
                                      style="width: 28px; height: 28px; display: block; border: 0;">
                             </a>
@@ -68,7 +68,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
             social_icons += f'''
                         <td style="padding: 0 12px;">
                             <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none;">
-                                <img src="https://www.dolabb.com/media/uploads/profiles/82ae391e-8406-4f50-9b5f-4bde607be746.jpg" 
+                                <img src="https://cdn.dolabb.com/media/uploads/profiles/3a790ca8-a900-432a-8a1f-104e0d12fbba.jpg" 
                                      alt="TikTok" width="28" height="28" 
                                      style="width: 28px; height: 28px; display: block; border: 0;">
                             </a>
