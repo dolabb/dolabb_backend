@@ -727,11 +727,6 @@ def get_hero_section_public(request):
     try:
         from admin_dashboard.services import HeroSectionService
         hero_data = HeroSectionService.get_hero_section(active_only=True)
-        if hero_data is None:
-            return Response({
-                'success': True,
-                'heroSection': None
-            }, status=status.HTTP_200_OK)
         return Response({
             'success': True,
             'heroSection': hero_data

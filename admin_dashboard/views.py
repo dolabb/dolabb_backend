@@ -998,11 +998,6 @@ def get_hero_section(request):
     
     try:
         hero_data = HeroSectionService.get_hero_section(active_only=False)
-        if hero_data is None:
-            return Response({
-                'success': True,
-                'heroSection': None
-            }, status=status.HTTP_200_OK)
         return Response({
             'success': True,
             'heroSection': hero_data
