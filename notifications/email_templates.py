@@ -53,24 +53,30 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
     # Social icons HTML
     social_icons = ""
     if config['social_links']:
-        social_icons = '<tr><td align="center" style="padding: 20px 0 0;"><table border="0" cellspacing="0" cellpadding="0"><tr>'
+        social_icons = '<tr><td align="center" style="padding: 20px 0 0;"><table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 0 auto;"><tr>'
         
         if config['social_links'].get('instagram'):
             social_icons += f'''
                         <td style="padding: 0 12px;">
-                            <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none;">
-                                <img src="https://cdn.dolabb.com/media/uploads/profiles/5dcee68d-4713-4743-8da8-f7cc11fc67b7.png" 
-                                     alt="Instagram" width="28" height="28" 
-                                     style="width: 28px; height: 28px; display: block; border: 0;">
+                            <a href="{config['social_links']['instagram']}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
+                                <img src="https://cdn.dolabb.com/media/uploads/profiles/a4221f40-57dc-45dd-ad8d-f00b74a2d660.jpg" 
+                                     alt="Instagram" 
+                                     width="28" 
+                                     height="28" 
+                                     border="0"
+                                     style="width: 28px; height: 28px; display: block; border: 0; outline: none; text-decoration: none;">
                             </a>
                         </td>'''
         if config['social_links'].get('tiktok'):
             social_icons += f'''
                         <td style="padding: 0 12px;">
-                            <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none;">
+                            <a href="{config['social_links']['tiktok']}" target="_blank" style="display: inline-block; text-decoration: none; border: 0; outline: none;">
                                 <img src="https://cdn.dolabb.com/media/uploads/profiles/3a790ca8-a900-432a-8a1f-104e0d12fbba.jpg" 
-                                     alt="TikTok" width="28" height="28" 
-                                     style="width: 28px; height: 28px; display: block; border: 0;">
+                                     alt="TikTok" 
+                                     width="28" 
+                                     height="28" 
+                                     border="0"
+                                     style="width: 28px; height: 28px; display: block; border: 0; outline: none; text-decoration: none;">
                             </a>
                         </td>'''
         
@@ -114,8 +120,8 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
                                 <img src="{config['logo_url']}" 
                                      alt="{company_name} Logo" 
                                      width="140" 
-                                     height="auto" 
-                                     style="max-width: 140px; height: auto; display: block;">
+                                     border="0" 
+                                     style="max-width: 140px; height: auto; display: block; border: 0; outline: none; text-decoration: none;">
                             </td>
                         </tr>
                         
