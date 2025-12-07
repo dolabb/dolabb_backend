@@ -676,9 +676,48 @@ class ProductService:
         if 'Processing Time (days)' in data:
             product.processing_time_days = int(data['Processing Time (days)'])
         if 'Affiliate Code (Optional)' in data:
-            affiliate_code = data['Affiliate Code (Optional)']
+            new_affiliate_code = data['Affiliate Code (Optional)']
+            new_affiliate_code = new_affiliate_code.strip() if new_affiliate_code and new_affiliate_code.strip() else None
+            
+            # Get old affiliate code before updating
+            old_affiliate_code = product.affiliate_code
+            
             # Only set if provided and not empty
-            product.affiliate_code = affiliate_code if affiliate_code and affiliate_code.strip() else None
+            product.affiliate_code = new_affiliate_code
+            
+            # Update affiliate code usage count if code is being added or changed
+            # Only increment if:
+            # 1. New code is different from old code (or old code was None)
+            # 2. New code is not empty
+            if new_affiliate_code and new_affiliate_code != old_affiliate_code:
+                try:
+                    from authentication.models import Affiliate
+                    # Find affiliate by code (case-insensitive)
+                    affiliate = Affiliate.objects(affiliate_code__iexact=new_affiliate_code.strip()).first()
+                    
+                    if affiliate:
+                        # Reload affiliate to get latest data (important for concurrent updates)
+                        affiliate.reload()
+                        
+                        # Get current count, handling None or empty string
+                        try:
+                            current_count = int(affiliate.code_usage_count) if affiliate.code_usage_count and str(affiliate.code_usage_count).strip() else 0
+                        except (ValueError, TypeError):
+                            current_count = 0
+                        
+                        # Increment count
+                        new_count = current_count + 1
+                        affiliate.code_usage_count = str(new_count)
+                        affiliate.last_activity = datetime.utcnow()
+                        affiliate.save()
+                        
+                        # Log for debugging
+                        import logging
+                        logging.info(f"Updated affiliate code usage count for {new_affiliate_code}: {current_count} -> {new_count} (Affiliate ID: {affiliate.id}) - Product Update")
+                except Exception as e:
+                    # Log error but don't fail product update
+                    import logging
+                    logging.error(f"Failed to update affiliate code usage count for {new_affiliate_code}: {str(e)}", exc_info=True)
         if 'Tax Percentage' in data or 'taxPercentage' in data:
             tax_percentage = data.get('Tax Percentage', data.get('taxPercentage', None))
             if tax_percentage is not None:
