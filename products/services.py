@@ -939,29 +939,8 @@ class ProductService:
         return cart_items, total_amount
     
     @staticmethod
-    def get_featured_products(limit=10, page=1, user_id=None):
-        """Get featured products"""
-        from mongoengine import Q
-        if user_id:
-            from bson import ObjectId
-            try:
-                user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-                query = Product.objects(
-                    Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
-                ).order_by('-likes_count', '-created_at')
-            except:
-                query = Product.objects(status='active', approved=True).order_by('-likes_count', '-created_at')
-        else:
-            query = Product.objects(status='active', approved=True).order_by('-likes_count', '-created_at')
-        total = query.count()
-        skip = (page - 1) * limit
-        products = query.skip(skip).limit(limit)
-        return products, total
-    
-    @staticmethod
-    def get_trending_products(limit=10, page=1, user_id=None):
-        """Get trending products"""
-        # Trending based on recent activity (simplified)
+    def get_featured_products(user_id=None):
+        """Get featured products - shows 4 most recent products"""
         from mongoengine import Q
         if user_id:
             from bson import ObjectId
@@ -974,10 +953,50 @@ class ProductService:
                 query = Product.objects(status='active', approved=True).order_by('-created_at')
         else:
             query = Product.objects(status='active', approved=True).order_by('-created_at')
-        total = query.count()
-        skip = (page - 1) * limit
-        products = query.skip(skip).limit(limit)
-        return products, total
+        # Always return first 4 products (no pagination)
+        products = query.limit(4)
+        return products
+    
+    @staticmethod
+    def get_trending_products(user_id=None):
+        """Get trending products - shows 4 best-selling products (most orders)"""
+        from mongoengine import Q
+        from products.models import Order
+        
+        # Get base query for active products
+        if user_id:
+            from bson import ObjectId
+            try:
+                user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                base_query = Product.objects(
+                    Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
+                )
+            except:
+                base_query = Product.objects(status='active', approved=True)
+        else:
+            base_query = Product.objects(status='active', approved=True)
+        
+        # Get all active products and calculate sales count for each
+        all_products = base_query.all()
+        
+        # Calculate sales count (completed orders) for each product
+        products_with_sales = []
+        for product in all_products:
+            sales_count = Order.objects(
+                product_id=product.id,
+                payment_status='completed'
+            ).count()
+            products_with_sales.append({
+                'product': product,
+                'sales_count': sales_count
+            })
+        
+        # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
+        products_with_sales.sort(key=lambda x: (x['sales_count'], x['product'].created_at), reverse=True)
+        
+        # Return first 4 products
+        trending_products = [item['product'] for item in products_with_sales[:4]]
+        return trending_products
     
     @staticmethod
     def get_all_categories_formatted():

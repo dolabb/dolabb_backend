@@ -641,16 +641,13 @@ def unsave_product(request, product_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_featured_products(request):
-    """Get featured products"""
+    """Get featured products - returns 4 most recent products"""
     try:
-        limit = int(request.GET.get('limit', 10))
-        page = int(request.GET.get('page', 1))
-        
         user_id = None
         if hasattr(request.user, 'id'):
             user_id = str(request.user.id)
         
-        products, total = ProductService.get_featured_products(limit, page, user_id)
+        products = ProductService.get_featured_products(user_id=user_id)
         
         products_list = []
         for product in products:
@@ -670,12 +667,7 @@ def get_featured_products(request):
             })
         
         return Response({
-            'products': products_list,
-            'pagination': {
-                'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
-                'totalItems': total
-            }
+            'products': products_list
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -684,16 +676,13 @@ def get_featured_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trending_products(request):
-    """Get trending products"""
+    """Get trending products - returns 4 best-selling products"""
     try:
-        limit = int(request.GET.get('limit', 10))
-        page = int(request.GET.get('page', 1))
-        
         user_id = None
         if hasattr(request.user, 'id'):
             user_id = str(request.user.id)
         
-        products, total = ProductService.get_trending_products(limit, page, user_id)
+        products = ProductService.get_trending_products(user_id=user_id)
         
         products_list = []
         for product in products:
@@ -713,12 +702,7 @@ def get_trending_products(request):
             })
         
         return Response({
-            'products': products_list,
-            'pagination': {
-                'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
-                'totalItems': total
-            }
+            'products': products_list
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
