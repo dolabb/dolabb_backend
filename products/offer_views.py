@@ -43,6 +43,7 @@ def create_offer(request):
                 'productId': str(offer.product_id.id),
                 'buyerId': str(offer.buyer_id.id),
                 'offerAmount': offer.offer_amount,
+                'currency': offer.currency if hasattr(offer, 'currency') and offer.currency else 'SAR',
                 'shippingAddress': offer.shipping_address or '',
                 'zipCode': offer.zip_code or '',
                 'houseNumber': offer.house_number or '',
@@ -327,6 +328,9 @@ def get_accepted_offers(request):
             # Get buyer details
             buyer = User.objects(id=offer.buyer_id.id).first()
             
+            # Get currency from offer (stored when offer was created) or product as fallback
+            offer_currency = offer.currency if hasattr(offer, 'currency') and offer.currency else (product.currency if product else 'SAR')
+            
             offer_data = {
                 'id': str(offer.id),
                 'product': {
@@ -344,6 +348,7 @@ def get_accepted_offers(request):
                     'phone': buyer.phone if buyer else ''
                 },
                 'offerAmount': float(offer.offer_amount),
+                'currency': offer_currency,  # Currency stored in offer
                 'originalPrice': float(offer.original_price),
                 'shippingCost': float(offer.shipping_cost),
                 'shippingAddress': offer.shipping_address or '',
@@ -447,6 +452,7 @@ def get_accepted_offer_detail(request, offer_id):
                 'profileImage': buyer.profile_image if buyer else ''
             },
             'offerAmount': float(offer.offer_amount),
+            'currency': offer.currency if hasattr(offer, 'currency') and offer.currency else (product.currency if product else 'SAR'),  # Currency stored in offer
             'originalPrice': float(offer.original_price),
             'shippingCost': float(offer.shipping_cost),
             'shippingAddress': offer.shipping_address or '',

@@ -1389,6 +1389,7 @@ class OfferService:
             seller_name=seller.full_name,
             offer_amount=float(offer_amount),
             original_price=product.price,
+            currency=product.currency or 'SAR',  # Store currency from product at time of offer
             shipping_cost=product.shipping_cost,
             expiration_date=datetime.utcnow() + timedelta(days=7)
         )
@@ -1596,12 +1597,16 @@ class OfferService:
         # Calculate final total (subtotal + VAT if tax exists)
         final_total = round(subtotal + vat_amount, 2)
         
+        # Get currency from offer (stored when offer was created) or product as fallback
+        currency = offer.currency if hasattr(offer, 'currency') and offer.currency else (product.currency if product and hasattr(product, 'currency') and product.currency else 'SAR')
+        
         result = {
             'product': {
                 'id': str(product.id),
                 'title': product.title,
                 'image': product_image
             },
+            'currency': currency,  # Include currency in order summary
             'originalPrice': original_price,
             'offerPrice': offer_price,
             'shippingPrice': shipping_price,
@@ -1779,6 +1784,8 @@ class OrderService:
         
         # Create order
         if 'offerId' in data and data['offerId']:
+            # Get currency from offer (stored when offer was created)
+            order_currency = offer.currency if hasattr(offer, 'currency') and offer.currency else (product.currency if product else 'SAR')
             order = Order(
                 order_number=order_number,
                 buyer_id=buyer_id,
@@ -1790,6 +1797,7 @@ class OrderService:
                 offer_id=offer.id,
                 price=offer.original_price,
                 offer_price=offer.offer_amount,
+                currency=order_currency,  # Store currency from offer
                 shipping_cost=shipping,
                 total_price=total_price,
                 dolabb_fee=platform_fee,
@@ -1798,6 +1806,8 @@ class OrderService:
                 seller_payout=seller_payout
             )
         else:
+            # Get currency from product
+            order_currency = product.currency if product and hasattr(product, 'currency') and product.currency else 'SAR'
             order = Order(
                 order_number=order_number,
                 buyer_id=buyer_id,
@@ -1807,6 +1817,7 @@ class OrderService:
                 product_id=product_id,
                 product_title=product.title,
                 price=base_amount,
+                currency=order_currency,  # Store currency from product
                 shipping_cost=shipping,
                 total_price=total_price,
                 dolabb_fee=platform_fee,

@@ -73,6 +73,7 @@ class Offer(Document):
     seller_name = StringField()
     offer_amount = FloatField(required=True)
     original_price = FloatField(required=True)
+    currency = StringField(default='SAR', max_length=10)  # Currency from product at time of offer
     shipping_cost = FloatField(default=0.0)
     # Shipping address details
     shipping_address = StringField(max_length=500)
@@ -105,6 +106,7 @@ class Order(Document):
     offer_id = ReferenceField(Offer)
     price = FloatField(required=True)
     offer_price = FloatField()
+    currency = StringField(default='SAR', max_length=10)  # Currency from product/offer at time of order
     shipping_cost = FloatField(default=0.0)
     total_price = FloatField(required=True)
     dolabb_fee = FloatField(default=0.0)
