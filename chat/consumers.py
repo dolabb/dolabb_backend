@@ -392,27 +392,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 shipping_address, zip_code, house_number
             )
             
-            # Get currency and product title - get from product directly since offer was just created with product's currency
-            offer_currency = 'SAR'  # Default
+            # Reload offer immediately to ensure we have the latest data including currency
+            # This is critical because the offer was just created and currency is stored in the database
+            try:
+                reloaded_offer = await self.reload_offer_async(str(offer.id))
+                if reloaded_offer:
+                    offer = reloaded_offer  # Use reloaded offer for currency retrieval
+            except Exception as e:
+                logger.warning(f"Could not reload offer: {str(e)}")
+            
+            # Get currency from offer FIRST (offer stores currency from product at creation time)
+            # This is the source of truth since offer.currency was set when offer was created
+            offer_currency = 'SAR'  # Default fallback
+            if hasattr(offer, 'currency') and offer.currency:
+                offer_currency = offer.currency
+            else:
+                # Fallback: get currency from product if offer doesn't have it
+                if offer.product_id:
+                    from products.models import Product
+                    product = Product.objects(id=offer.product_id.id).only('currency', 'title').first()
+                    if product and hasattr(product, 'currency') and product.currency:
+                        offer_currency = product.currency
+            
+            # Get product title for the message
             product_title = ""
             if offer.product_id:
                 from products.models import Product
-                product = Product.objects(id=offer.product_id.id).only('currency', 'title').first()
+                product = Product.objects(id=offer.product_id.id).only('title').first()
                 if product:
-                    # Get currency from product (offer stores this at creation, but get from source to be sure)
-                    if hasattr(product, 'currency') and product.currency:
-                        offer_currency = product.currency
-                    # Get product title
                     product_title = product.title or ""
-            
-            # Also try to get currency from offer if available (after reload)
-            try:
-                # Reload offer in sync context to get currency
-                reloaded_offer = await self.reload_offer_async(str(offer.id))
-                if reloaded_offer and hasattr(reloaded_offer, 'currency') and reloaded_offer.currency:
-                    offer_currency = reloaded_offer.currency
-            except Exception as e:
-                logger.warning(f"Could not reload offer for currency: {str(e)}")
             
             # Get offer details with product information
             offer_data = await self.get_offer_details_async(offer)
