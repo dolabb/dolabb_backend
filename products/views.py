@@ -143,6 +143,7 @@ def get_products(request):
                     'description': product.description or '',
                     'price': float(product.price) if product.price else 0.0,
                     'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
+                    'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                     'images': product.images or [],
                     'category': product.category if product.category else '',
                     'subcategory': product.subcategory or '',
@@ -567,6 +568,7 @@ def get_seller_products(request):
                 'description': product.description or '',
                 'price': product.price,
                 'originalPrice': product.original_price or product.price,
+                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images or [],
                 'category': product.category,
                 'subcategory': product.subcategory or '',
@@ -658,6 +660,7 @@ def get_featured_products(request):
                 'title': product.title,
                 'description': product.description,
                 'price': product.price,
+                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
                 'seller': {
                     'id': str(seller.id) if seller else '',
@@ -700,6 +703,7 @@ def get_trending_products(request):
                 'title': product.title,
                 'description': product.description,
                 'price': product.price,
+                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
                 'seller': {
                     'id': str(seller.id) if seller else '',

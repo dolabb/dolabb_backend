@@ -28,6 +28,7 @@ def get_user_products(request):
                 'title': product.title,
                 'description': product.description,
                 'price': product.price,
+                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
                 'status': product.status,
                 'createdAt': product.created_at.isoformat()
