@@ -395,9 +395,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Get offer details with product information
             offer_data = await self.get_offer_details_async(offer)
             
+            # Get currency from offer (offer stores currency from product at creation time)
+            offer_currency = offer.currency if hasattr(offer, 'currency') and offer.currency else 'SAR'
+            
+            # Get product title for the message
+            product_title = ""
+            if offer.product_id:
+                from products.models import Product
+                product = Product.objects(id=offer.product_id.id).only('title').first()
+                if product:
+                    product_title = product.title or ""
+            
+            # Generate message text with correct currency
+            if not text:
+                if product_title:
+                    message_text = f"I've made an offer of {offer_currency} {offer_amount:.2f} for \"{product_title}\"."
+                else:
+                    message_text = f"I've made an offer of {offer_currency} {offer_amount:.2f}."
+            else:
+                message_text = text
+            
             # Save message with offer
             message = await self.save_message(
-                buyer_id, receiver_id, text or f"Made an offer of ${offer_amount}",
+                buyer_id, receiver_id, message_text,
                 product_id, [], str(offer.id)
             )
             
