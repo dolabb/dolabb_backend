@@ -281,6 +281,9 @@ class ChatService:
                     if offer.seller_id:
                         seller_id_str = str(offer.seller_id.id if hasattr(offer.seller_id, 'id') else offer.seller_id)
                     
+                    # Get currency from offer (stored when offer was created from product)
+                    offer_currency = offer.currency if hasattr(offer, 'currency') and offer.currency else 'SAR'
+                    
                     offer_data = {
                         'id': offer_id_str,
                         'productId': str(offer.product_id.id) if offer.product_id and hasattr(offer.product_id, 'id') else (str(offer.product_id) if offer.product_id else None),
@@ -288,6 +291,7 @@ class ChatService:
                         'sellerId': seller_id_str,
                         'offerAmount': float(offer.offer_amount) if offer.offer_amount else 0.0,
                         'originalPrice': float(offer.original_price) if offer.original_price else 0.0,
+                        'currency': offer_currency,  # Add currency from offer
                         'status': offer.status,
                         'createdAt': offer.created_at.isoformat() if offer.created_at else None,
                         'updatedAt': offer.updated_at.isoformat() if offer.updated_at else None,
@@ -331,12 +335,25 @@ class ChatService:
                                 'images': limited_images,
                                 'price': float(product.price) if product.price else 0.0,
                                 'originalPrice': float(product.original_price) if product.original_price else float(product.price) if product.price else 0.0,
-                                'currency': product.currency or 'SAR',
+                                'currency': offer_currency,  # Use currency from offer, not current product currency
                                 'size': product.size or '',
                                 'condition': product.condition or '',
                                 'brand': product.brand or '',
                                 'category': product.category or '',
                             }
+                    
+                    # Update message text if it's an offer message and needs currency correction
+                    if msg.message_type == 'offer' and msg.text:
+                        # Check if message text has wrong currency format and update it
+                        import re
+                        # Pattern to match "SAR" or currency in message
+                        if 'SAR' in msg.text and offer_currency != 'SAR':
+                            # Replace SAR with correct currency in message text
+                            message_data['text'] = re.sub(r'SAR\s+(\d+\.?\d*)', f'{offer_currency} \\1', msg.text)
+                        elif re.search(r'(\w+)\s+(\d+\.?\d*)', msg.text) and offer_currency not in msg.text:
+                            # If currency is missing or wrong, regenerate message with correct currency
+                            product_title = offer_data.get('product', {}).get('title', 'this product')
+                            message_data['text'] = f"I've made an offer of {offer_currency} {offer.offer_amount:.2f} for \"{product_title}\"."
                     
                     message_data['offer'] = offer_data
             
