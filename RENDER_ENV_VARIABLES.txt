@@ -19,8 +19,12 @@ JWT_SECRET_KEY=your-jwt-secret-key-here
 
 RESEND_API_KEY=re_h7DXEMec_PXna1zyChxx7W5GLHLCe9QLJ
 RESEND_FROM_EMAIL=no-reply@dolabb.com
-MOYASAR_SECRET_KEY=your-moyasar-secret-key-here
-MOYASAR_PUBLISHABLE_KEY=your-moyasar-publishable-key-here
+# Moyasar Payment Gateway - LIVE KEYS (Production Mode)
+# IMPORTANT: Add your live keys from Moyasar dashboard
+# Secret Key format: sk_live_xxxxxxxxxxxxx
+# Publishable Key format: pk_live_xxxxxxxxxxxxx
+MOYASAR_SECRET_KEY=your-moyasar-live-secret-key-here
+MOYASAR_PUBLISHABLE_KEY=your-moyasar-live-publishable-key-here
 CORS_ALLOWED_ORIGINS=https://your-frontend.com
 
 # ============================================

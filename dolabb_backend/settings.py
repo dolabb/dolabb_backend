@@ -202,7 +202,7 @@ RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', '')
 
 # Moyasar Payment Configuration
-MOYASAR_PUBLIC_KEY = os.getenv('MOYASAR_PUBLIC_KEY', '')
+MOYASAR_PUBLISHABLE_KEY = os.getenv('MOYASAR_PUBLISHABLE_KEY', '')
 MOYASAR_SECRET_KEY = os.getenv('MOYASAR_SECRET_KEY', '')
 MOYASAR_API_URL = 'https://api.moyasar.com/v1/payments'
 
