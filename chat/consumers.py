@@ -392,19 +392,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 shipping_address, zip_code, house_number
             )
             
-            # Get offer details with product information
-            offer_data = await self.get_offer_details_async(offer)
-            
-            # Get currency from offer (offer stores currency from product at creation time)
-            offer_currency = offer.currency if hasattr(offer, 'currency') and offer.currency else 'SAR'
-            
-            # Get product title for the message
+            # Get currency and product title - get from product directly since offer was just created with product's currency
+            offer_currency = 'SAR'  # Default
             product_title = ""
             if offer.product_id:
                 from products.models import Product
-                product = Product.objects(id=offer.product_id.id).only('title').first()
+                product = Product.objects(id=offer.product_id.id).only('currency', 'title').first()
                 if product:
+                    # Get currency from product (offer stores this at creation, but get from source to be sure)
+                    if hasattr(product, 'currency') and product.currency:
+                        offer_currency = product.currency
+                    # Get product title
                     product_title = product.title or ""
+            
+            # Also try to get currency from offer if available (after reload)
+            try:
+                # Reload offer in sync context to get currency
+                reloaded_offer = await self.reload_offer_async(str(offer.id))
+                if reloaded_offer and hasattr(reloaded_offer, 'currency') and reloaded_offer.currency:
+                    offer_currency = reloaded_offer.currency
+            except Exception as e:
+                logger.warning(f"Could not reload offer for currency: {str(e)}")
+            
+            # Get offer details with product information
+            offer_data = await self.get_offer_details_async(offer)
             
             # Generate message text with correct currency
             if not text:
@@ -901,6 +912,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Get offer asynchronously"""
         from products.models import Offer
         return Offer.objects(id=offer_id).first()
+    
+    @database_sync_to_async
+    def reload_offer_async(self, offer_id):
+        """Reload offer asynchronously to get latest data including currency"""
+        from products.models import Offer
+        offer = Offer.objects(id=offer_id).first()
+        if offer:
+            offer.reload()
+        return offer
     
     @database_sync_to_async
     def get_offer_details_async(self, offer, include_counter=False):
