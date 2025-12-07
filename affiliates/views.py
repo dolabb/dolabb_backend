@@ -42,12 +42,24 @@ def request_cashout(request):
         if not affiliate:
             return Response({'success': False, 'error': 'Affiliate not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        pending = float(affiliate.pending_earnings or 0)
-        if amount > pending:
-            return Response({'success': False, 'error': 'Insufficient pending earnings'}, status=status.HTTP_400_BAD_REQUEST)
+        # Get currency from request (default to SAR if not provided)
+        currency = request.data.get('currency', 'SAR').upper()
         
         if amount <= 0:
             return Response({'success': False, 'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get earnings by currency
+        earnings_by_currency = AffiliateService.get_earnings_by_currency(affiliate)
+        
+        # Get pending earnings for the requested currency
+        currency_earnings = earnings_by_currency.get(currency, {'total': 0.0, 'pending': 0.0, 'paid': 0.0})
+        pending = currency_earnings['pending']
+        
+        if amount > pending:
+            return Response({
+                'success': False, 
+                'error': f'Insufficient pending earnings in {currency}. Available: {pending} {currency}'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check for duplicate pending requests (idempotency check)
         # Prevent multiple requests for the same amount within a short time window
@@ -78,6 +90,7 @@ def request_cashout(request):
             affiliate_id=affiliate_id,
             affiliate_name=affiliate.full_name,
             amount=amount,
+            currency=currency,  # Store currency
             payment_method=request.data.get('paymentMethod', 'Bank Transfer'),
             account_details=affiliate.account_number or ''
         )
@@ -93,8 +106,19 @@ def request_cashout(request):
         
         # Only deduct amount after successful payout request creation
         try:
-            new_pending = max(0, pending - amount)
-            affiliate.pending_earnings = str(round(new_pending, 2))
+            # Update currency-specific earnings
+            if not affiliate.earnings_by_currency:
+                affiliate.earnings_by_currency = {}
+            
+            currency_earnings = affiliate.earnings_by_currency.get(currency, {'total': 0.0, 'pending': 0.0, 'paid': 0.0})
+            new_pending = max(0, currency_earnings['pending'] - amount)
+            currency_earnings['pending'] = round(new_pending, 2)
+            affiliate.earnings_by_currency[currency] = currency_earnings
+            
+            # Update legacy fields (for backward compatibility) - sum all currencies
+            all_pending = sum(e['pending'] for e in affiliate.earnings_by_currency.values())
+            affiliate.pending_earnings = str(round(all_pending, 2))
+            
             affiliate.last_activity = datetime.utcnow()
             affiliate.save()
         except Exception as e:
@@ -117,8 +141,10 @@ def request_cashout(request):
             },
             'updatedBalance': {
                 'availableBalance': round(new_pending, 2),
-                'pendingEarnings': round(new_pending, 2)
-            }
+                'pendingEarnings': round(new_pending, 2),
+                'currency': currency
+            },
+            'earningsByCurrency': AffiliateService.get_earnings_by_currency(affiliate)  # Refresh earnings after update
         }, status=status.HTTP_201_CREATED)
     except ValueError as e:
         return Response({'success': False, 'error': f'Invalid amount: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -312,9 +338,16 @@ def normalize_image_url(url, request):
 
 def format_affiliate_response(affiliate, request):
     """Format affiliate data for response"""
-    total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
-    pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
-    paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+    from affiliates.services import AffiliateService
+    
+    # Get earnings by currency
+    earnings_by_currency = AffiliateService.get_earnings_by_currency(affiliate)
+    
+    # Calculate totals across all currencies (for backward compatibility)
+    total_earnings = sum(e['total'] for e in earnings_by_currency.values())
+    pending_earnings = sum(e['pending'] for e in earnings_by_currency.values())
+    paid_earnings = sum(e['paid'] for e in earnings_by_currency.values())
+    
     code_usage_count = int(affiliate.code_usage_count) if affiliate.code_usage_count else 0
     commission_rate = float(affiliate.commission_rate) if affiliate.commission_rate else 0.0
     
@@ -326,12 +359,13 @@ def format_affiliate_response(affiliate, request):
         'country_code': safe_get(affiliate, 'country_code'),
         'affiliate_code': safe_get(affiliate, 'affiliate_code'),
         'profile_image': normalize_image_url(safe_get(affiliate, 'profile_image') or '', request),
-        'totalEarnings': total_earnings,
-        'totalCommissions': total_earnings,
-        'pendingEarnings': pending_earnings,
-        'paidEarnings': paid_earnings,
+        'totalEarnings': round(total_earnings, 2),  # Total across all currencies
+        'totalCommissions': round(total_earnings, 2),
+        'pendingEarnings': round(pending_earnings, 2),  # Pending across all currencies
+        'paidEarnings': round(paid_earnings, 2),  # Paid across all currencies
+        'earningsByCurrency': earnings_by_currency,  # New: Breakdown by currency
         'codeUsageCount': code_usage_count,
-        'availableBalance': pending_earnings,
+        'availableBalance': round(pending_earnings, 2),
         'commission_rate': commission_rate,
         'status': safe_get(affiliate, 'status', 'active'),
         'bank_details': {

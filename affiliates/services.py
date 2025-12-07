@@ -12,6 +12,37 @@ class AffiliateService:
     """Affiliate service"""
     
     @staticmethod
+    def get_earnings_by_currency(affiliate):
+        """
+        Helper function to get earnings breakdown by currency from affiliate model.
+        Returns formatted earnings with currency breakdown.
+        """
+        earnings_by_currency = affiliate.earnings_by_currency if affiliate.earnings_by_currency else {}
+        
+        # Format earnings by currency
+        formatted_earnings = {}
+        for currency, earnings in earnings_by_currency.items():
+            formatted_earnings[currency] = {
+                'total': round(float(earnings.get('total', 0.0)), 2),
+                'pending': round(float(earnings.get('pending', 0.0)), 2),
+                'paid': round(float(earnings.get('paid', 0.0)), 2)
+            }
+        
+        # If no currency-specific earnings exist, use legacy fields and default to SAR
+        if not formatted_earnings:
+            total = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
+            pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
+            paid = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+            if total > 0 or pending > 0 or paid > 0:
+                formatted_earnings['SAR'] = {
+                    'total': round(total, 2),
+                    'pending': round(pending, 2),
+                    'paid': round(paid, 2)
+                }
+        
+        return formatted_earnings
+    
+    @staticmethod
     def validate_affiliate_code(code):
         """Validate affiliate code"""
         affiliate = Affiliate.objects(affiliate_code=code, status='active').first()
@@ -50,6 +81,14 @@ class AffiliateService:
             total_referrals = transactions.count()
             total_earnings = sum(t.commission_amount for t in transactions)
             
+            # Get earnings by currency
+            earnings_by_currency = AffiliateService.get_earnings_by_currency(affiliate)
+            
+            # Calculate totals across all currencies (for backward compatibility)
+            total_all = sum(e['total'] for e in earnings_by_currency.values())
+            pending_all = sum(e['pending'] for e in earnings_by_currency.values())
+            paid_all = sum(e['paid'] for e in earnings_by_currency.values())
+            
             affiliates_list.append({
                 '_id': str(affiliate.id),
                 'Affiliatename': affiliate.full_name,
@@ -58,15 +97,16 @@ class AffiliateService:
                 'commissionRate': float(affiliate.commission_rate) if affiliate.commission_rate else 0.0,
                 'codeUsageCount': int(affiliate.code_usage_count) if affiliate.code_usage_count else 0,
                 'Earnings': {
-                    'Total': float(affiliate.total_earnings) if affiliate.total_earnings else 0.0,
-                    'Pending': float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0,
-                    'Paid': float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+                    'Total': round(total_all, 2),  # Total across all currencies
+                    'Pending': round(pending_all, 2),  # Pending across all currencies
+                    'Paid': round(paid_all, 2)  # Paid across all currencies
                 },
+                'EarningsByCurrency': earnings_by_currency,  # New: Breakdown by currency
                 'Affiliatestatus': affiliate.status,
                 'Last Activity': affiliate.last_activity.isoformat() if affiliate.last_activity else None,
                 'stats': {
                     'totalReferrals': total_referrals,
-                    'totalEarnings': float(affiliate.total_earnings or 0),
+                    'totalEarnings': round(total_all, 2),
                     'totalTransactions': total_referrals
                 }
             })
@@ -93,6 +133,9 @@ class AffiliateService:
         for transaction in transactions:
             referred_user = User.objects(id=transaction.referred_user_id.id).first() if transaction.referred_user_id else None
             
+            # Get currency from transaction (default to SAR if not set)
+            transaction_currency = transaction.currency if hasattr(transaction, 'currency') and transaction.currency else 'SAR'
+            
             transactions_list.append({
                 '_id': str(transaction.id),
                 'affiliateId': str(transaction.affiliate_id.id),
@@ -107,6 +150,7 @@ class AffiliateService:
                 'date': transaction.date.isoformat(),
                 'Referred User Name': transaction.referred_user_name or (referred_user.full_name if referred_user else ''),
                 'Referred User Commission': transaction.commission_amount,
+                'currency': transaction_currency,  # New: Currency of this commission
                 'status': transaction.status
             })
         
@@ -150,11 +194,13 @@ class AffiliateService:
         
         requests_list = []
         for req in requests:
+            currency = req.currency if hasattr(req, 'currency') and req.currency else 'SAR'
             requests_list.append({
                 '_id': str(req.id),
                 'affiliateId': str(req.affiliate_id.id),
                 'affiliateName': req.affiliate_name,
                 'amount': req.amount,
+                'currency': currency,  # New: Currency of payout request
                 'Requested Date': req.requested_date.isoformat(),
                 'Payment Method': req.payment_method,
                 'Status': req.status,
@@ -178,11 +224,13 @@ class AffiliateService:
         
         requests_list = []
         for req in requests:
+            currency = req.currency if hasattr(req, 'currency') and req.currency else 'SAR'
             requests_list.append({
                 'id': str(req.id),
                 'affiliateId': str(req.affiliate_id.id),
                 'affiliateName': req.affiliate_name,
                 'amount': req.amount,
+                'currency': currency,  # New: Currency of payout request
                 'requestedDate': req.requested_date.isoformat(),
                 'paymentMethod': req.payment_method,
                 'status': req.status,
@@ -208,11 +256,22 @@ class AffiliateService:
         
         # Update affiliate earnings
         # Note: Amount was already deducted from pending_earnings when request was created
-        # So we just need to add it to paid_earnings
+        # So we just need to add it to paid_earnings for the specific currency
         affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
         if affiliate:
-            paid = float(affiliate.paid_earnings or 0) + payout.amount
-            affiliate.paid_earnings = str(round(paid, 2))
+            currency = payout.currency if hasattr(payout, 'currency') and payout.currency else 'SAR'
+            
+            # Update currency-specific earnings
+            if not affiliate.earnings_by_currency:
+                affiliate.earnings_by_currency = {}
+            
+            currency_earnings = affiliate.earnings_by_currency.get(currency, {'total': 0.0, 'pending': 0.0, 'paid': 0.0})
+            currency_earnings['paid'] = round(currency_earnings.get('paid', 0.0) + payout.amount, 2)
+            affiliate.earnings_by_currency[currency] = currency_earnings
+            
+            # Update legacy fields (for backward compatibility) - sum all currencies
+            all_paid = sum(e['paid'] for e in affiliate.earnings_by_currency.values())
+            affiliate.paid_earnings = str(round(all_paid, 2))
             affiliate.save()
         
         # Send notification to affiliate
@@ -238,11 +297,22 @@ class AffiliateService:
         payout.reviewed_by = admin_id
         payout.save()
         
-        # Refund amount back to pending_earnings (available balance)
+        # Refund amount back to pending_earnings (available balance) for the specific currency
         affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
         if affiliate:
-            pending = float(affiliate.pending_earnings or 0) + payout.amount
-            affiliate.pending_earnings = str(round(pending, 2))
+            currency = payout.currency if hasattr(payout, 'currency') and payout.currency else 'SAR'
+            
+            # Update currency-specific earnings
+            if not affiliate.earnings_by_currency:
+                affiliate.earnings_by_currency = {}
+            
+            currency_earnings = affiliate.earnings_by_currency.get(currency, {'total': 0.0, 'pending': 0.0, 'paid': 0.0})
+            currency_earnings['pending'] = round(currency_earnings.get('pending', 0.0) + payout.amount, 2)
+            affiliate.earnings_by_currency[currency] = currency_earnings
+            
+            # Update legacy fields (for backward compatibility) - sum all currencies
+            all_pending = sum(e['pending'] for e in affiliate.earnings_by_currency.values())
+            affiliate.pending_earnings = str(round(all_pending, 2))
             affiliate.save()
         
         # Send notification to affiliate
@@ -278,10 +348,13 @@ class AffiliateService:
         
         transactions = list(transactions_query.order_by('-date'))
         
-        # Get summary totals from affiliate (these account for cashouts and are the source of truth)
-        total_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
-        pending_earnings = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
-        paid_earnings = float(affiliate.paid_earnings) if affiliate.paid_earnings else 0.0
+        # Get earnings by currency
+        earnings_by_currency = AffiliateService.get_earnings_by_currency(affiliate)
+        
+        # Calculate totals across all currencies (for backward compatibility)
+        total_earnings = sum(e['total'] for e in earnings_by_currency.values())
+        pending_earnings = sum(e['pending'] for e in earnings_by_currency.values())
+        paid_earnings = sum(e['paid'] for e in earnings_by_currency.values())
         
         # Calculate transaction totals for reference (before cashout deductions)
         total_from_transactions = sum(t.commission_amount for t in transactions)
@@ -375,6 +448,7 @@ class AffiliateService:
                 'pendingEarnings': round(pending_earnings, 2),
                 'paidEarnings': round(paid_earnings, 2),
                 'availableBalance': round(pending_earnings, 2),
+                'earningsByCurrency': earnings_by_currency,  # New: Breakdown by currency
                 # Additional info for clarity
                 'totalFromTransactions': round(total_from_transactions, 2),
                 'pendingFromTransactions': round(pending_from_transactions, 2),

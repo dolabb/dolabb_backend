@@ -1884,6 +1884,9 @@ class OrderService:
                 else:
                     used_commission_rate = settings.default_affiliate_commission_percentage if settings else 25.0
                 
+                # Get currency from order
+                order_currency = order.currency if hasattr(order, 'currency') and order.currency else 'SAR'
+                
                 transaction = AffiliateTransaction(
                     affiliate_id=affiliate.id,
                     affiliate_name=affiliate.full_name,
@@ -1892,6 +1895,7 @@ class OrderService:
                     transaction_id=order.id,
                     commission_rate=used_commission_rate,  # Store the actual rate used
                     commission_amount=affiliate_commission,
+                    currency=order_currency,  # Store currency from order
                     status='pending'  # Will be updated to 'paid' when payment is completed
                 )
                 transaction.save()
@@ -1934,17 +1938,32 @@ class OrderService:
                 # Already fully processed, skip to avoid double-counting
                 return
             
-            # Get current earnings
+            # Get currency from order
+            order_currency = order.currency if hasattr(order, 'currency') and order.currency else 'SAR'
+            
+            # Get current earnings (legacy fields - kept for backward compatibility)
             current_earnings = float(affiliate.total_earnings) if affiliate.total_earnings else 0.0
             current_pending = float(affiliate.pending_earnings) if affiliate.pending_earnings else 0.0
             
-            # Add earnings on payment completion
-            # Note: In case of webhook retries, this might add earnings multiple times.
-            # For production, consider adding a flag to track if earnings were already added,
-            # or use database transactions to ensure idempotency.
-            # For now, we'll add earnings when payment is completed (transaction status is 'pending')
+            # Update legacy fields (for backward compatibility)
             affiliate.total_earnings = str(round(current_earnings + order.affiliate_commission, 2))
             affiliate.pending_earnings = str(round(current_pending + order.affiliate_commission, 2))
+            
+            # Update currency-separated earnings
+            if not affiliate.earnings_by_currency:
+                affiliate.earnings_by_currency = {}
+            
+            currency_earnings = affiliate.earnings_by_currency.get(order_currency, {
+                'total': 0.0,
+                'pending': 0.0,
+                'paid': 0.0
+            })
+            
+            # Add commission to currency-specific earnings
+            currency_earnings['total'] = round(currency_earnings.get('total', 0.0) + order.affiliate_commission, 2)
+            currency_earnings['pending'] = round(currency_earnings.get('pending', 0.0) + order.affiliate_commission, 2)
+            affiliate.earnings_by_currency[order_currency] = currency_earnings
+            
             affiliate.last_activity = datetime.utcnow()
             affiliate.save()
             
@@ -1959,6 +1978,7 @@ class OrderService:
                     transaction_id=order.id,
                     commission_rate=float(affiliate.commission_rate) if affiliate.commission_rate else 0.0,
                     commission_amount=order.affiliate_commission,
+                    currency=order_currency,  # Store currency
                     status='pending'  # Will be updated to 'paid' when review + shipment proof are provided
                 )
                 transaction.save()

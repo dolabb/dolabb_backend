@@ -1,7 +1,7 @@
 """
 Authentication models using mongoengine
 """
-from mongoengine import Document, StringField, EmailField, DateTimeField, EmbeddedDocument, EmbeddedDocumentField, BooleanField
+from mongoengine import Document, StringField, EmailField, DateTimeField, EmbeddedDocument, EmbeddedDocumentField, BooleanField, DictField
 from datetime import datetime, timedelta
 import bcrypt
 import secrets
@@ -178,9 +178,12 @@ class Affiliate(Document):
     affiliate_code = StringField(required=True, unique=True, max_length=50)
     commission_rate = StringField(default='0')
     code_usage_count = StringField(default='0')
-    total_earnings = StringField(default='0')
-    pending_earnings = StringField(default='0')
-    paid_earnings = StringField(default='0')
+    total_earnings = StringField(default='0')  # Legacy field - kept for backward compatibility
+    pending_earnings = StringField(default='0')  # Legacy field - kept for backward compatibility
+    paid_earnings = StringField(default='0')  # Legacy field - kept for backward compatibility
+    # New field: earnings_by_currency stores earnings separated by currency
+    # Format: {"SAR": {"total": 100.0, "pending": 50.0, "paid": 50.0}, "USDT": {"total": 25.0, "pending": 25.0, "paid": 0.0}}
+    earnings_by_currency = DictField(default={})
     status = StringField(choices=['active', 'deactivated'], default='active')
     last_activity = DateTimeField(default=datetime.utcnow)
     bank_name = StringField(max_length=200)
