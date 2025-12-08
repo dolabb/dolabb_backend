@@ -148,29 +148,40 @@ def payment_webhook(request):
             error_message = None
             error_code = None
             
-            # Try to extract error from various possible locations in Moyasar response
-            error_message = (
-                payment_data.get('message') or 
-                payment_data.get('error') or 
-                payment_data.get('description') or
-                payment_data.get('error_message')
-            )
+            # Check source errors first (most common location for card errors in Moyasar)
+            if 'source' in payment_data:
+                source = payment_data.get('source', {})
+                if 'message' in source:
+                    error_message = source.get('message')
+                    logger.info(f"Found error message in source.message: {error_message}")
+                if 'response_code' in source:
+                    error_code = source.get('response_code')
+                    logger.info(f"Found error code in source.response_code: {error_code}")
+                if 'transaction' in source:
+                    source_transaction = source.get('transaction', {})
+                    if 'message' in source_transaction:
+                        error_message = source_transaction.get('message') or error_message
+                    if 'code' in source_transaction:
+                        error_code = source_transaction.get('code') or error_code
             
             # Check transaction errors
-            if 'transaction' in payment_data:
+            if not error_message and 'transaction' in payment_data:
                 transaction = payment_data.get('transaction', {})
                 error_message = transaction.get('message') or error_message
                 error_code = transaction.get('code') or error_code
             
-            # Check source errors (card errors)
-            if 'source' in payment_data:
-                source = payment_data.get('source', {})
-                if 'message' in source:
-                    error_message = source.get('message') or error_message
-                if 'transaction' in source:
-                    source_transaction = source.get('transaction', {})
-                    error_message = source_transaction.get('message') or error_message
-                    error_code = source_transaction.get('code') or error_code
+            # Check top-level error fields
+            if not error_message:
+                error_message = (
+                    payment_data.get('message') or 
+                    payment_data.get('error') or 
+                    payment_data.get('description') or
+                    payment_data.get('error_message')
+                )
+            
+            # If still no error code, try response_code at top level
+            if not error_code:
+                error_code = payment_data.get('response_code') or payment_data.get('code')
             
             logger.info(f"Extracted error details - message: {error_message}, code: {error_code}")
             
@@ -474,42 +485,79 @@ def verify_payment(request):
         
         # Verify payment status from Moyasar
         payment_data = MoyasarPaymentService.verify_payment_status(moyasar_payment_id)
-        payment_status = payment_data.get('status')
-        logger.info(f"Payment status from Moyasar: {payment_status}")
+        
+        # Log full payment data for debugging
+        logger.info(f"Full Moyasar payment response: {payment_data}")
+        
+        # Extract status - check multiple possible locations
+        payment_status = (
+            payment_data.get('status') or 
+            payment_data.get('payment', {}).get('status') or
+            payment_data.get('body', {}).get('status') or
+            payment_data.get('data', {}).get('status')
+        )
+        
+        logger.info(f"Extracted payment status from Moyasar: '{payment_status}'")
+        
+        # If status is still None, log warning and try to infer from other fields
+        if not payment_status:
+            logger.warning(f"Payment status not found in expected locations. Full response keys: {list(payment_data.keys())}")
+            # Check if there's an error or failure indicator
+            if payment_data.get('source', {}).get('message') and 'DECLINED' in str(payment_data.get('source', {}).get('message', '')).upper():
+                payment_status = 'failed'
+                logger.info(f"Inferred status as 'failed' from source message")
+        
+        if not payment_status:
+            logger.error(f"Could not determine payment status from Moyasar response")
+            return Response({
+                'success': False,
+                'error': 'Could not determine payment status from Moyasar response'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Handle failed payments first - send failed email and keep order pending
-        if payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
+        if payment_status.lower() in ['failed', 'declined', 'canceled', 'cancelled']:
             logger.warning(f"Payment {moyasar_payment_id} has status '{payment_status}' - handling as failed")
             
             # Extract error information from Moyasar response
             error_message = None
             error_code = None
             
-            # Try to extract error from various possible locations in Moyasar response
-            error_message = (
-                payment_data.get('message') or 
-                payment_data.get('error') or 
-                payment_data.get('description') or
-                payment_data.get('error_message')
-            )
+            # Check source errors first (most common location for card errors in Moyasar)
+            if 'source' in payment_data:
+                source = payment_data.get('source', {})
+                if 'message' in source:
+                    error_message = source.get('message')
+                    logger.info(f"Found error message in source.message: {error_message}")
+                if 'response_code' in source:
+                    error_code = source.get('response_code')
+                    logger.info(f"Found error code in source.response_code: {error_code}")
+                if 'transaction' in source:
+                    source_transaction = source.get('transaction', {})
+                    if 'message' in source_transaction:
+                        error_message = source_transaction.get('message') or error_message
+                    if 'code' in source_transaction:
+                        error_code = source_transaction.get('code') or error_code
             
             # Check transaction errors
-            if 'transaction' in payment_data:
+            if not error_message and 'transaction' in payment_data:
                 transaction = payment_data.get('transaction', {})
                 error_message = transaction.get('message') or error_message
                 error_code = transaction.get('code') or error_code
             
-            # Check source errors (card errors)
-            if 'source' in payment_data:
-                source = payment_data.get('source', {})
-                if 'message' in source:
-                    error_message = source.get('message') or error_message
-                if 'transaction' in source:
-                    source_transaction = source.get('transaction', {})
-                    error_message = source_transaction.get('message') or error_message
-                    error_code = source_transaction.get('code') or error_code
+            # Check top-level error fields
+            if not error_message:
+                error_message = (
+                    payment_data.get('message') or 
+                    payment_data.get('error') or 
+                    payment_data.get('description') or
+                    payment_data.get('error_message')
+                )
             
-            logger.info(f"Extracted error details - message: {error_message}, code: {error_code}")
+            # If still no error code, try response_code at top level
+            if not error_code:
+                error_code = payment_data.get('response_code') or payment_data.get('code')
+            
+            logger.info(f"Final extracted error details - message: '{error_message}', code: '{error_code}'")
             
             buyer_id_to_notify = None
             
@@ -572,29 +620,51 @@ def verify_payment(request):
                 try:
                     from notifications.notification_helper import NotificationHelper
                     logger.info(f"❌ Payment failed - sending failed payment email to buyer {buyer_id_to_notify}")
-                    NotificationHelper.send_payment_failed_with_details(
+                    logger.info(f"Error message: '{error_message}', Error code: '{error_code}'")
+                    result = NotificationHelper.send_payment_failed_with_details(
                         buyer_id=buyer_id_to_notify,
                         error_message=error_message,
                         error_code=error_code,
                         moyasar_response=payment_data
                     )
-                    logger.info(f"✅ Payment failed email sent")
+                    if result:
+                        logger.info(f"✅ Payment failed email sent successfully to buyer {buyer_id_to_notify}")
+                    else:
+                        logger.warning(f"⚠️ Payment failed email function returned None for buyer {buyer_id_to_notify}")
                 except Exception as e:
-                    logger.error(f"Error sending payment failed email: {str(e)}")
+                    logger.error(f"❌ Error sending payment failed email: {str(e)}", exc_info=True)
+            else:
+                logger.error(f"❌ Cannot send failed payment email - buyer_id_to_notify is None for payment {moyasar_payment_id}")
+                logger.error(f"Payment data: {payment_data}")
+                logger.error(f"Payment record exists: {payment is not None}")
+                if payment:
+                    logger.error(f"Payment has order_id: {payment.order_id is not None if payment else False}")
             
             return Response({
                 'success': True,
                 'payment': {
                     'id': moyasar_payment_id,
                     'status': payment_status,
-                    'updated': False
+                    'updated': False,
+                    'error_message': error_message,
+                    'error_code': error_code
                 },
-                'message': 'Payment verification completed - payment failed'
+                'message': 'Payment verification completed - payment failed',
+                'email_sent': buyer_id_to_notify is not None
             }, status=status.HTTP_200_OK)
         
-        # Update payment status for successful payments
-        updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
-        logger.info(f"Payment status update result: {updated}")
+        # Handle successful payments (status is 'paid' or 'authorized')
+        updated = False
+        if payment_status.lower() in ['paid', 'authorized']:
+            logger.info(f"✅ Payment {moyasar_payment_id} has status '{payment_status}' - processing as successful")
+            
+            # Update payment status for successful payments
+            updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
+            logger.info(f"Payment status update result: {updated}")
+        else:
+            logger.warning(f"⚠️ Payment {moyasar_payment_id} has unexpected status '{payment_status}' - treating as pending")
+            # For other statuses (like 'initiated', 'pending'), keep as pending
+            updated = False
         
         if not updated:
             logger.warning(f"Payment not found, trying to find/create payment record")
