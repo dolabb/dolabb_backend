@@ -1896,16 +1896,9 @@ class OrderService:
         
         order.save()
         
-        # Send notifications
-        try:
-            from notifications.notification_helper import NotificationHelper
-            # Notify seller - item sold
-            NotificationHelper.send_item_sold(str(order.seller_id.id))
-            # Notify buyer - order confirmation
-            NotificationHelper.send_order_confirmation(str(order.buyer_id.id))
-        except Exception as e:
-            import logging
-            logging.error(f"Error sending order notifications: {str(e)}")
+        # DO NOT send notifications here - emails will be sent only when payment is confirmed as 'paid'
+        # This prevents sending "order created" and "item sold" emails for failed payments
+        # Notifications will be sent in verify_payment or payment_webhook when payment status is 'paid'
         
         # Create affiliate transaction record (but don't update earnings yet - only when payment is completed)
         if affiliate and affiliate_code and affiliate_commission > 0:

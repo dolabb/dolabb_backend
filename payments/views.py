@@ -477,7 +477,122 @@ def verify_payment(request):
         payment_status = payment_data.get('status')
         logger.info(f"Payment status from Moyasar: {payment_status}")
         
-        # Update payment status
+        # Handle failed payments first - send failed email and keep order pending
+        if payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
+            logger.warning(f"Payment {moyasar_payment_id} has status '{payment_status}' - handling as failed")
+            
+            # Extract error information from Moyasar response
+            error_message = None
+            error_code = None
+            
+            # Try to extract error from various possible locations in Moyasar response
+            error_message = (
+                payment_data.get('message') or 
+                payment_data.get('error') or 
+                payment_data.get('description') or
+                payment_data.get('error_message')
+            )
+            
+            # Check transaction errors
+            if 'transaction' in payment_data:
+                transaction = payment_data.get('transaction', {})
+                error_message = transaction.get('message') or error_message
+                error_code = transaction.get('code') or error_code
+            
+            # Check source errors (card errors)
+            if 'source' in payment_data:
+                source = payment_data.get('source', {})
+                if 'message' in source:
+                    error_message = source.get('message') or error_message
+                if 'transaction' in source:
+                    source_transaction = source.get('transaction', {})
+                    error_message = source_transaction.get('message') or error_message
+                    error_code = source_transaction.get('code') or error_code
+            
+            logger.info(f"Extracted error details - message: {error_message}, code: {error_code}")
+            
+            buyer_id_to_notify = None
+            
+            # Try to find order and buyer
+            from payments.models import Payment
+            from products.models import Order, Offer
+            
+            payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
+            if payment and payment.order_id:
+                buyer_id_to_notify = str(payment.order_id.buyer_id.id)
+                # Mark payment as failed but keep order as pending
+                payment.status = 'failed'
+                payment.metadata = payment_data
+                payment.save()
+                # Keep order payment_status as pending (don't mark as failed)
+                if payment.order_id.payment_status != 'pending':
+                    payment.order_id.payment_status = 'pending'
+                    payment.order_id.save()
+                logger.info(f"Payment {moyasar_payment_id} marked as failed, order kept as pending")
+            else:
+                # Try to find order by payment_id or metadata
+                order = Order.objects(payment_id=moyasar_payment_id).first()
+                
+                if not order:
+                    offer_id_from_request = request.data.get('offerId') or request.data.get('offer_id')
+                    metadata = payment_data.get('metadata', {})
+                    offer_id = offer_id_from_request or metadata.get('offerId') or metadata.get('offer_id')
+                    if offer_id:
+                        offer = Offer.objects(id=offer_id).first()
+                        if offer:
+                            order = Order.objects(offer_id=offer.id).first()
+                
+                if not order:
+                    order_id = request.data.get('orderId') or request.data.get('order_id')
+                    if order_id:
+                        order = Order.objects(id=order_id).first()
+                
+                if order:
+                    buyer_id_to_notify = str(order.buyer_id.id)
+                    # Create payment record with failed status
+                    if not payment:
+                        payment = Payment(
+                            order_id=order.id,
+                            buyer_id=order.buyer_id.id,
+                            moyasar_payment_id=moyasar_payment_id,
+                            amount=float(payment_data.get('amount', 0)) / 100,
+                            currency=payment_data.get('currency', 'SAR'),
+                            status='failed',
+                            metadata=payment_data
+                        )
+                        payment.save()
+                    # Keep order payment_status as pending
+                    if order.payment_status != 'pending':
+                        order.payment_status = 'pending'
+                        order.save()
+                    logger.info(f"Order {order.id} kept as pending, payment marked as failed")
+            
+            # Send payment failed email with error details (ONLY email for failed payments)
+            if buyer_id_to_notify:
+                try:
+                    from notifications.notification_helper import NotificationHelper
+                    logger.info(f"❌ Payment failed - sending failed payment email to buyer {buyer_id_to_notify}")
+                    NotificationHelper.send_payment_failed_with_details(
+                        buyer_id=buyer_id_to_notify,
+                        error_message=error_message,
+                        error_code=error_code,
+                        moyasar_response=payment_data
+                    )
+                    logger.info(f"✅ Payment failed email sent")
+                except Exception as e:
+                    logger.error(f"Error sending payment failed email: {str(e)}")
+            
+            return Response({
+                'success': True,
+                'payment': {
+                    'id': moyasar_payment_id,
+                    'status': payment_status,
+                    'updated': False
+                },
+                'message': 'Payment verification completed - payment failed'
+            }, status=status.HTTP_200_OK)
+        
+        # Update payment status for successful payments
         updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
         logger.info(f"Payment status update result: {updated}")
         
@@ -543,9 +658,28 @@ def verify_payment(request):
                     order.save()
                     logger.info(f"Updated order {order.id} payment_id")
                 
-                # Update status
+                # Update status - this will update payment, order, and offer
                 updated = MoyasarPaymentService.update_payment_status(moyasar_payment_id, payment_status)
                 logger.info(f"Payment status update after creation: {updated}")
+                
+                # Send order confirmation emails ONLY when payment is confirmed as 'paid'
+                if payment_status == 'paid' and updated:
+                    try:
+                        from notifications.notification_helper import NotificationHelper
+                        logger.info(f"✅ Payment confirmed as 'paid' by Moyasar - sending order confirmation emails")
+                        # Notify seller - item sold (only when payment is confirmed)
+                        NotificationHelper.send_item_sold(str(order.seller_id.id))
+                        # Notify buyer - order confirmation (only when payment is confirmed)
+                        NotificationHelper.send_order_confirmation(str(order.buyer_id.id))
+                        # Notify seller - payment confirmed
+                        NotificationHelper.send_payment_confirmed(str(order.seller_id.id))
+                        # Notify seller - order needs shipping
+                        NotificationHelper.send_order_needs_shipping(str(order.seller_id.id))
+                        # Notify buyer - payment successful
+                        NotificationHelper.send_payment_successful(str(order.buyer_id.id))
+                        logger.info(f"✅ All order confirmation emails sent successfully")
+                    except Exception as e:
+                        logger.error(f"Error sending order confirmation emails: {str(e)}")
             else:
                 logger.error(f"Could not find order for payment {moyasar_payment_id}")
         

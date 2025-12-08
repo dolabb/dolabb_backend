@@ -198,11 +198,14 @@ class MoyasarPaymentService:
             
             # Update affiliate earnings when payment is completed
             OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
-        elif payment_status == 'failed':
+        elif payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
             payment.status = 'failed'
-            payment.order_id.payment_status = 'failed'
-            payment.order_id.save()
-            logger.info(f"Payment {moyasar_payment_id} marked as failed")
+            # Keep order payment_status as 'pending' - don't mark as failed
+            # Order should remain pending until payment is successful
+            if payment.order_id.payment_status != 'pending':
+                payment.order_id.payment_status = 'pending'
+                payment.order_id.save()
+            logger.info(f"Payment {moyasar_payment_id} marked as failed, order kept as pending")
         
         payment.save()
         logger.info(f"Payment {payment.id} saved successfully")
