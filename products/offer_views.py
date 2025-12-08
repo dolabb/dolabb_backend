@@ -205,6 +205,7 @@ def get_order_summary(request, offer_id):
         order_summary = {
             'productTitle': summary['product']['title'],
             'productImage': summary['product']['image'],
+            'currency': summary.get('currency', 'SAR'),  # Currency from offer/product
             'originalPrice': summary['originalPrice'],
             'offerPrice': summary['offerPrice'],
             'shippingPrice': summary['shippingPrice'],
