@@ -293,6 +293,289 @@ class NotificationHelper:
         )
     
     @staticmethod
+    def _extract_user_friendly_error(error_message, error_code, moyasar_response, language='en'):
+        """
+        Extract and translate Moyasar error into user-friendly message
+        
+        Returns:
+            tuple: (user_friendly_message, should_show_code)
+        """
+        # First, extract raw error message if not provided
+        raw_message = error_message or ''
+        raw_code = error_code or ''
+        
+        if moyasar_response:
+            # Extract from transaction
+            if 'transaction' in moyasar_response:
+                transaction = moyasar_response.get('transaction', {})
+                raw_message = transaction.get('message') or raw_message
+                raw_code = transaction.get('code') or raw_code
+            
+            # Extract from source (card errors)
+            if 'source' in moyasar_response:
+                source = moyasar_response.get('source', {})
+                if 'message' in source:
+                    raw_message = source.get('message') or raw_message
+                if 'transaction' in source:
+                    source_transaction = source.get('transaction', {})
+                    raw_message = source_transaction.get('message') or raw_message
+                    raw_code = source_transaction.get('code') or raw_code
+            
+            # Extract from top level
+            if not raw_message:
+                raw_message = (
+                    moyasar_response.get('message') or 
+                    moyasar_response.get('error') or 
+                    moyasar_response.get('description') or
+                    moyasar_response.get('error_message') or
+                    ''
+                )
+        
+        # Normalize error message for matching (lowercase, remove extra spaces)
+        normalized_message = raw_message.lower().strip() if raw_message else ''
+        normalized_code = str(raw_code).upper().strip() if raw_code else ''
+        
+        # Map common payment errors to user-friendly messages
+        error_mappings = {
+            'en': {
+                # Insufficient funds
+                'insufficient': 'Insufficient funds in your account',
+                'insufficient_funds': 'Insufficient funds in your account',
+                'insufficient balance': 'Insufficient balance in your account',
+                'insufficient_funds_in_account': 'Insufficient funds in your account',
+                '51': 'Insufficient funds in your account',
+                '61': 'Insufficient funds in your account',
+                
+                # Card declined
+                'declined': 'Your card was declined by the bank',
+                'card_declined': 'Your card was declined by the bank',
+                'transaction_declined': 'Your transaction was declined by the bank',
+                '05': 'Your card was declined by the bank',
+                '14': 'Your card was declined by the bank',
+                
+                # Invalid card information
+                'invalid': 'Invalid card information provided',
+                'invalid_card': 'Invalid card information provided',
+                'invalid_card_number': 'Invalid card number',
+                'invalid_cvv': 'Invalid CVV code',
+                'invalid_expiry': 'Invalid card expiry date',
+                'invalid_card_data': 'Invalid card information provided',
+                '14': 'Invalid card number',
+                '54': 'Invalid card expiry date',
+                
+                # Expired card
+                'expired': 'Your card has expired',
+                'card_expired': 'Your card has expired',
+                'expired_card': 'Your card has expired',
+                '33': 'Your card has expired',
+                
+                # 3DS authentication
+                '3ds': '3D Secure authentication failed',
+                '3d_secure': '3D Secure authentication failed',
+                'authentication_failed': 'Card authentication failed',
+                'authentication_required': 'Card authentication is required',
+                
+                # Card not supported
+                'not_supported': 'This card type is not supported',
+                'card_not_supported': 'This card type is not supported',
+                'unsupported_card': 'This card type is not supported',
+                
+                # Security/Blocked
+                'blocked': 'Your card has been blocked',
+                'security': 'Transaction blocked for security reasons',
+                'fraud': 'Transaction declined due to security concerns',
+                'suspicious': 'Transaction declined due to security concerns',
+                
+                # Limit exceeded
+                'limit': 'Transaction limit exceeded',
+                'exceeded': 'Transaction limit exceeded',
+                'daily_limit': 'Daily transaction limit exceeded',
+                
+                # Generic
+                'generic': 'Payment could not be processed. Please check your card details and try again',
+            },
+            'ar': {
+                # Insufficient funds
+                'insufficient': 'رصيد غير كافٍ في حسابك',
+                'insufficient_funds': 'رصيد غير كافٍ في حسابك',
+                'insufficient balance': 'رصيد غير كافٍ في حسابك',
+                'insufficient_funds_in_account': 'رصيد غير كافٍ في حسابك',
+                '51': 'رصيد غير كافٍ في حسابك',
+                '61': 'رصيد غير كافٍ في حسابك',
+                
+                # Card declined
+                'declined': 'تم رفض بطاقتك من قبل البنك',
+                'card_declined': 'تم رفض بطاقتك من قبل البنك',
+                'transaction_declined': 'تم رفض المعاملة من قبل البنك',
+                '05': 'تم رفض بطاقتك من قبل البنك',
+                '14': 'تم رفض بطاقتك من قبل البنك',
+                
+                # Invalid card information
+                'invalid': 'معلومات البطاقة غير صحيحة',
+                'invalid_card': 'معلومات البطاقة غير صحيحة',
+                'invalid_card_number': 'رقم البطاقة غير صحيح',
+                'invalid_cvv': 'رمز CVV غير صحيح',
+                'invalid_expiry': 'تاريخ انتهاء البطاقة غير صحيح',
+                'invalid_card_data': 'معلومات البطاقة غير صحيحة',
+                '14': 'رقم البطاقة غير صحيح',
+                '54': 'تاريخ انتهاء البطاقة غير صحيح',
+                
+                # Expired card
+                'expired': 'بطاقتك منتهية الصلاحية',
+                'card_expired': 'بطاقتك منتهية الصلاحية',
+                'expired_card': 'بطاقتك منتهية الصلاحية',
+                '33': 'بطاقتك منتهية الصلاحية',
+                
+                # 3DS authentication
+                '3ds': 'فشل التحقق من البطاقة',
+                '3d_secure': 'فشل التحقق من البطاقة',
+                'authentication_failed': 'فشل التحقق من البطاقة',
+                'authentication_required': 'التحقق من البطاقة مطلوب',
+                
+                # Card not supported
+                'not_supported': 'نوع البطاقة غير مدعوم',
+                'card_not_supported': 'نوع البطاقة غير مدعوم',
+                'unsupported_card': 'نوع البطاقة غير مدعوم',
+                
+                # Security/Blocked
+                'blocked': 'بطاقتك محظورة',
+                'security': 'تم حظر المعاملة لأسباب أمنية',
+                'fraud': 'تم رفض المعاملة لأسباب أمنية',
+                'suspicious': 'تم رفض المعاملة لأسباب أمنية',
+                
+                # Limit exceeded
+                'limit': 'تم تجاوز حد المعاملة',
+                'exceeded': 'تم تجاوز حد المعاملة',
+                'daily_limit': 'تم تجاوز الحد اليومي للمعاملات',
+                
+                # Generic
+                'generic': 'لم يتم معالجة الدفع. يرجى التحقق من تفاصيل بطاقتك والمحاولة مرة أخرى',
+            }
+        }
+        
+        mappings = error_mappings.get(language, error_mappings['en'])
+        
+        # Try to match error message or code
+        user_friendly_message = None
+        
+        # Check error code first (more reliable)
+        if normalized_code and normalized_code in mappings:
+            user_friendly_message = mappings[normalized_code]
+        
+        # Check error message keywords
+        if not user_friendly_message:
+            for key, message in mappings.items():
+                if key in normalized_message:
+                    user_friendly_message = message
+                    break
+        
+        # If no match found, use generic message
+        if not user_friendly_message:
+            user_friendly_message = mappings.get('generic', 'Payment could not be processed. Please try again.')
+        
+        return user_friendly_message, False  # Don't show technical error code to users
+    
+    @staticmethod
+    def send_payment_failed_with_details(buyer_id, error_message=None, error_code=None, moyasar_response=None):
+        """
+        Send payment failed notification with user-friendly error information from Moyasar
+        
+        Args:
+            buyer_id: Buyer user ID
+            error_message: Error message from Moyasar
+            error_code: Error code from Moyasar
+            moyasar_response: Full Moyasar payment response for extracting error details
+        """
+        try:
+            # Get user
+            user = User.objects(id=buyer_id).first()
+            if not user:
+                print(f"Warning: User not found with id={buyer_id}")
+                return None
+            
+            # Get user's language preference
+            user_language = getattr(user, 'language', 'en')
+            if user_language not in ['en', 'ar']:
+                user_language = 'en'
+            
+            # Extract user-friendly error message
+            user_friendly_message, show_code = NotificationHelper._extract_user_friendly_error(
+                error_message, error_code, moyasar_response, user_language
+            )
+            
+            # Build error details message
+            if user_language == 'ar':
+                error_details = f"<br><br><strong>السبب:</strong> {user_friendly_message}"
+            else:
+                error_details = f"<br><br><strong>Reason:</strong> {user_friendly_message}"
+            
+            # Get base template
+            template = get_notification_template('buyer', 'payment_failed', user_language)
+            if not template:
+                print(f"Warning: Template not found for payment_failed")
+                return None
+            
+            # Enhance message with error details
+            enhanced_message = template['message'] + error_details
+            
+            # Create user notification
+            user_notification = UserNotification(
+                user_id=user.id,
+                title=template['title'],
+                message=enhanced_message,
+                notification_type=template['type'],
+                delivered_at=datetime.utcnow()
+            )
+            user_notification.save()
+            
+            # Send via WebSocket
+            try:
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        f'notifications_{user.id}',
+                        {
+                            'type': 'send_notification',
+                            'notification': {
+                                'id': str(user_notification.id),
+                                'title': user_notification.title,
+                                'message': user_notification.message,
+                                'type': user_notification.notification_type,
+                                'createdAt': user_notification.created_at.isoformat()
+                            }
+                        }
+                    )
+            except Exception as e:
+                print(f"Warning: Failed to send WebSocket notification: {str(e)}")
+            
+            # Send email notification with error details
+            try:
+                if hasattr(user, 'email') and user.email:
+                    user_name = None
+                    if hasattr(user, 'name') and user.name:
+                        user_name = user.name
+                    elif hasattr(user, 'username') and user.username:
+                        user_name = user.username
+                    elif hasattr(user, 'first_name') and user.first_name:
+                        user_name = user.first_name
+                    
+                    send_notification_email(
+                        email=user.email,
+                        notification_title=template['title'],
+                        notification_message=enhanced_message,
+                        notification_type='error',
+                        user_name=user_name,
+                        language=user_language
+                    )
+            except Exception as e:
+                print(f"Warning: Failed to send payment failed email: {str(e)}")
+            
+            return user_notification
+        except Exception as e:
+            print(f"Error sending payment failed notification with details: {str(e)}")
+            return None
+    
+    @staticmethod
     def send_review_your_purchase(buyer_id):
         """Send review your purchase notification"""
         return NotificationHelper.send_notification_to_user(

@@ -80,7 +80,7 @@ def process_payment(request):
 
 @api_view(['POST'])
 def payment_webhook(request):
-    """Handle Moyasar webhook"""
+    """Handle Moyasar webhook - Verifies payment status with Moyasar API before processing"""
     import logging
     logger = logging.getLogger(__name__)
     
@@ -99,13 +99,14 @@ def payment_webhook(request):
         payment_data = data.get('data', data)
         
         payment_id = payment_data.get('id') or data.get('id')
-        payment_status = payment_data.get('status') or data.get('status')
+        # Don't trust status from frontend - we'll verify with Moyasar
+        frontend_status = payment_data.get('status') or data.get('status')
         amount = payment_data.get('amount', data.get('amount', 0))
         
         # Extract offerId from request data if provided (frontend can send it)
         offer_id_from_request = data.get('offerId') or data.get('offer_id') or payment_data.get('offerId')
         
-        logger.info(f"Extracted payment_id: {payment_id}, status: {payment_status}, offerId: {offer_id_from_request}")
+        logger.info(f"Extracted payment_id: {payment_id}, frontend_status: {frontend_status}, offerId: {offer_id_from_request}")
         
         if not payment_id:
             logger.error("Payment ID not found in webhook data")
@@ -114,30 +115,132 @@ def payment_webhook(request):
                 'error': 'Payment ID not found in webhook data'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        if not payment_status:
-            logger.error("Payment status not found in webhook data")
+        # CRITICAL: Verify payment status with Moyasar API - don't trust frontend status
+        logger.info(f"Verifying payment status with Moyasar API for payment_id: {payment_id}")
+        try:
+            verified_payment_data = MoyasarPaymentService.verify_payment_status(payment_id)
+            payment_status = verified_payment_data.get('status')
+            logger.info(f"✅ Verified payment status from Moyasar: {payment_status} (frontend sent: {frontend_status})")
+            
+            # Use verified payment data instead of frontend data
+            payment_data = verified_payment_data
+            amount = payment_data.get('amount', amount)
+        except Exception as e:
+            logger.error(f"❌ Failed to verify payment status with Moyasar: {str(e)}")
+            # If verification fails, we can't trust the payment status
             return Response({
                 'success': False,
-                'error': 'Payment status not found in webhook data'
+                'error': f'Failed to verify payment status with Moyasar: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        if not payment_status:
+            logger.error("Payment status not found in Moyasar response")
+            return Response({
+                'success': False,
+                'error': 'Payment status not found in Moyasar response'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Handle failed payments - don't process further, just return success to stop retries
         if payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
             logger.warning(f"Payment {payment_id} has status '{payment_status}' - marking as failed")
+            
+            # Extract error information from Moyasar response
+            error_message = None
+            error_code = None
+            
+            # Try to extract error from various possible locations in Moyasar response
+            error_message = (
+                payment_data.get('message') or 
+                payment_data.get('error') or 
+                payment_data.get('description') or
+                payment_data.get('error_message')
+            )
+            
+            # Check transaction errors
+            if 'transaction' in payment_data:
+                transaction = payment_data.get('transaction', {})
+                error_message = transaction.get('message') or error_message
+                error_code = transaction.get('code') or error_code
+            
+            # Check source errors (card errors)
+            if 'source' in payment_data:
+                source = payment_data.get('source', {})
+                if 'message' in source:
+                    error_message = source.get('message') or error_message
+                if 'transaction' in source:
+                    source_transaction = source.get('transaction', {})
+                    error_message = source_transaction.get('message') or error_message
+                    error_code = source_transaction.get('code') or error_code
+            
+            logger.info(f"Extracted error details - message: {error_message}, code: {error_code}")
+            
+            buyer_id_to_notify = None
+            
             try:
                 # Try to update payment status to failed if payment exists
                 from payments.models import Payment
                 payment = Payment.objects(moyasar_payment_id=payment_id).first()
                 if payment:
                     payment.status = 'failed'
+                    # Store full Moyasar response in metadata for error details
+                    payment.metadata = payment_data
                     payment.save()
                     logger.info(f"Payment {payment_id} marked as failed")
+                    
+                    # Get buyer_id from payment
+                    if payment.order_id:
+                        buyer_id_to_notify = str(payment.order_id.buyer_id.id)
+                        payment.order_id.payment_status = 'failed'
+                        payment.order_id.save()
+                        logger.info(f"Order {payment.order_id.id} payment status marked as failed")
                 
-                # Try to update order status if exists
-                if payment and payment.order_id:
-                    payment.order_id.payment_status = 'failed'
-                    payment.order_id.save()
-                    logger.info(f"Order {payment.order_id.id} payment status marked as failed")
+                # If payment not found, try to find order by payment_id or metadata
+                if not buyer_id_to_notify:
+                    from products.models import Order
+                    # Try to find order by payment_id
+                    order = Order.objects(payment_id=payment_id).first()
+                    
+                    # If not found, try to find by offerId from metadata
+                    if not order:
+                        metadata = payment_data.get('metadata', {})
+                        offer_id = offer_id_from_request or metadata.get('offerId') or metadata.get('offer_id')
+                        if offer_id:
+                            from products.models import Offer
+                            offer = Offer.objects(id=offer_id).first()
+                            if offer:
+                                order = Order.objects(offer_id=offer.id).first()
+                    
+                    # If still not found, try order_id from metadata
+                    if not order:
+                        metadata = payment_data.get('metadata', {})
+                        order_id = metadata.get('order_id') or metadata.get('orderId')
+                        if order_id:
+                            order = Order.objects(id=order_id).first()
+                    
+                    if order:
+                        buyer_id_to_notify = str(order.buyer_id.id)
+                        order.payment_status = 'failed'
+                        order.save()
+                        logger.info(f"Order {order.id} payment status marked as failed")
+                
+                # Send payment failed email with Moyasar error details
+                if buyer_id_to_notify:
+                    try:
+                        from notifications.notification_helper import NotificationHelper
+                        logger.info(f"❌ Payment failed - sending email with Moyasar error details to buyer {buyer_id_to_notify}")
+                        
+                        # Send payment failed email with error details
+                        NotificationHelper.send_payment_failed_with_details(
+                            buyer_id=buyer_id_to_notify,
+                            error_message=error_message,
+                            error_code=error_code,
+                            moyasar_response=payment_data
+                        )
+                        logger.info(f"✅ Payment failed email sent with error details")
+                    except Exception as e:
+                        logger.error(f"Error sending payment failed email: {str(e)}")
+                else:
+                    logger.warning(f"Could not find buyer_id to send payment failed email for payment {payment_id}")
             except Exception as e:
                 logger.error(f"Error updating failed payment: {str(e)}")
             
@@ -287,6 +390,7 @@ def payment_webhook(request):
                 }, status=status.HTTP_200_OK)
         
         # Final verification: Ensure offer status is updated if payment is paid
+        # Only send emails if Moyasar confirms payment status is 'paid'
         if payment_status == 'paid':
             from products.models import Offer as OfferModel
             
@@ -295,16 +399,33 @@ def payment_webhook(request):
                 from payments.models import Payment as PaymentModel
                 from products.models import Order as OrderModel
                 payment_check = PaymentModel.objects(moyasar_payment_id=payment_id).first()
-                if payment_check and payment_check.order_id and payment_check.order_id.offer_id:
-                    offer_check = OfferModel.objects(id=payment_check.order_id.offer_id.id).first()
-                    if offer_check and offer_check.status != 'paid':
-                        logger.warning(f"Final check: Offer {offer_check.id} status is still '{offer_check.status}', forcing update")
-                        offer_check.status = 'paid'
-                        offer_check.updated_at = datetime.utcnow()
-                        offer_check.save()
-                        logger.info(f"✅ Final update: Offer {offer_check.id} status set to 'paid'")
-                    elif offer_check:
-                        logger.info(f"Final verification - Offer {offer_check.id} status: '{offer_check.status}'")
+                if payment_check and payment_check.order_id:
+                    order_check = payment_check.order_id
+                    
+                    # Send email notifications only when Moyasar confirms payment is 'paid'
+                    try:
+                        from notifications.notification_helper import NotificationHelper
+                        logger.info(f"✅ Payment confirmed as 'paid' by Moyasar - sending email notifications")
+                        # Notify seller - payment confirmed
+                        NotificationHelper.send_payment_confirmed(str(order_check.seller_id.id))
+                        # Notify seller - order needs shipping
+                        NotificationHelper.send_order_needs_shipping(str(order_check.seller_id.id))
+                        # Notify buyer - payment successful
+                        NotificationHelper.send_payment_successful(str(order_check.buyer_id.id))
+                        logger.info(f"✅ Email notifications sent successfully")
+                    except Exception as e:
+                        logger.error(f"Error sending payment notifications: {str(e)}")
+                    
+                    if order_check.offer_id:
+                        offer_check = OfferModel.objects(id=order_check.offer_id.id).first()
+                        if offer_check and offer_check.status != 'paid':
+                            logger.warning(f"Final check: Offer {offer_check.id} status is still '{offer_check.status}', forcing update")
+                            offer_check.status = 'paid'
+                            offer_check.updated_at = datetime.utcnow()
+                            offer_check.save()
+                            logger.info(f"✅ Final update: Offer {offer_check.id} status set to 'paid'")
+                        elif offer_check:
+                            logger.info(f"Final verification - Offer {offer_check.id} status: '{offer_check.status}'")
             
             # Also try to update offer directly from offerId if we have it
             if offer_id_final:
