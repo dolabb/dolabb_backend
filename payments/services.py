@@ -12,12 +12,25 @@ from products.services import OrderService
 class MoyasarPaymentService:
     """Moyasar payment service"""
     
+    # Moyasar supported currencies
+    MOYASAR_SUPPORTED_CURRENCIES = ['SAR', 'USD', 'EUR', 'GBP', 'KWD', 'AED', 'OMR', 'QAR']
+    
     @staticmethod
     def process_payment(order_id, card_details=None, token_id=None, amount=None, description=None, metadata=None):
         """Process payment via Moyasar"""
         order = Order.objects(id=order_id).first()
         if not order:
             raise ValueError("Order not found")
+        
+        # Get currency from order, default to SAR if not set
+        order_currency = order.currency or 'SAR'
+        
+        # Validate currency is supported by Moyasar
+        if order_currency not in MoyasarPaymentService.MOYASAR_SUPPORTED_CURRENCIES:
+            raise ValueError(
+                f"Currency '{order_currency}' is not supported by Moyasar. "
+                f"Supported currencies: {', '.join(MoyasarPaymentService.MOYASAR_SUPPORTED_CURRENCIES)}"
+            )
         
         if not amount:
             amount = order.total_price * 100  # Convert to cents/fils
@@ -31,7 +44,7 @@ class MoyasarPaymentService:
         
         payload = {
             'amount': int(amount),
-            'currency': 'SAR',
+            'currency': order_currency,
             'description': description or f'Order {order.order_number}',
             'metadata': metadata or {}
         }
@@ -63,7 +76,7 @@ class MoyasarPaymentService:
                 order_id=order_id,
                 buyer_id=order.buyer_id.id,
                 amount=amount / 100,
-                currency='SAR',
+                currency=order_currency,
                 moyasar_payment_id=payment_data.get('id'),
                 status='completed' if payment_data.get('status') == 'paid' else 'pending',
                 metadata=payment_data
@@ -148,13 +161,15 @@ class MoyasarPaymentService:
             order = Order.objects(payment_id=moyasar_payment_id).first()
             if order:
                 logger.info(f"Found order {order.id} by payment_id, creating payment record")
+                # Get currency from order, default to SAR if not set
+                order_currency = order.currency or 'SAR'
                 # Create payment record
                 payment = Payment(
                     order_id=order.id,
                     buyer_id=order.buyer_id.id,
                     moyasar_payment_id=moyasar_payment_id,
                     amount=order.total_price,
-                    currency='SAR',
+                    currency=order_currency,
                     status='completed' if payment_status == 'paid' else 'pending',
                     metadata={}
                 )

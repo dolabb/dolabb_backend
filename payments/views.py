@@ -28,7 +28,8 @@ def checkout(request):
                 'shipping': order.shipping_cost,
                 'platformFee': order.dolabb_fee,
                 'affiliateCode': order.affiliate_code or '',
-                'total': order.total_price
+                'total': order.total_price,
+                'currency': order.currency or 'SAR'  # Include currency in checkout response
             }
         }, status=status.HTTP_201_CREATED)
     except ValueError as e:
@@ -363,12 +364,14 @@ def payment_webhook(request):
                 # Create payment record if it doesn't exist
                 existing_payment = Payment.objects(moyasar_payment_id=payment_id).first()
                 if not existing_payment:
+                    # Get currency from order first, then payment_data, then default to SAR
+                    payment_currency = order.currency or payment_data.get('currency') or 'SAR'
                     payment = Payment(
                         order_id=order.id,
                         buyer_id=order.buyer_id.id,
                         moyasar_payment_id=payment_id,
                         amount=float(amount) / 100 if amount else 0,
-                        currency=payment_data.get('currency', 'SAR'),
+                        currency=payment_currency,
                         status='completed' if payment_status == 'paid' else 'pending',
                         metadata=payment_data
                     )
@@ -599,12 +602,14 @@ def verify_payment(request):
                     buyer_id_to_notify = str(order.buyer_id.id)
                     # Create payment record with failed status
                     if not payment:
+                        # Get currency from order first, then payment_data, then default to SAR
+                        payment_currency = order.currency or payment_data.get('currency') or 'SAR'
                         payment = Payment(
                             order_id=order.id,
                             buyer_id=order.buyer_id.id,
                             moyasar_payment_id=moyasar_payment_id,
                             amount=float(payment_data.get('amount', 0)) / 100,
-                            currency=payment_data.get('currency', 'SAR'),
+                            currency=payment_currency,
                             status='failed',
                             metadata=payment_data
                         )
@@ -708,12 +713,14 @@ def verify_payment(request):
                 payment = Payment.objects(moyasar_payment_id=moyasar_payment_id).first()
                 if not payment:
                     # Create payment record
+                    # Get currency from order first, then payment_data, then default to SAR
+                    payment_currency = order.currency or payment_data.get('currency') or 'SAR'
                     payment = Payment(
                         order_id=order.id,
                         buyer_id=order.buyer_id.id,
                         moyasar_payment_id=moyasar_payment_id,
                         amount=float(payment_data.get('amount', 0)) / 100,
-                        currency=payment_data.get('currency', 'SAR'),
+                        currency=payment_currency,
                         status='completed' if payment_status == 'paid' else 'pending',
                         metadata=payment_data
                     )
