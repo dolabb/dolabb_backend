@@ -15,7 +15,7 @@ class NotificationHelper:
     """Helper class for sending automatic notifications"""
     
     @staticmethod
-    def send_notification_to_user(user_id, category, template_key, user_type='user'):
+    def send_notification_to_user(user_id, category, template_key, user_type='user', extra_message=None):
         """
         Send notification to a specific user
         
@@ -52,12 +52,17 @@ class NotificationHelper:
             if not template:
                 print(f"Warning: Template not found for category={category}, key={template_key}")
                 return None
+
+            # Append extra details if provided
+            message = template['message']
+            if extra_message:
+                message = f"{message}<br><br>{extra_message}"
             
             # Create user notification
             user_notification = UserNotification(
                 user_id=user.id,
                 title=template['title'],
-                message=template['message'],
+                message=message,
                 notification_type=template['type'],
                 delivered_at=datetime.utcnow()
             )
@@ -107,7 +112,7 @@ class NotificationHelper:
                     send_notification_email(
                         email=user.email,
                         notification_title=template['title'],
-                        notification_message=template['message'],
+                            notification_message=message,
                         notification_type=email_notification_type,
                         user_name=user_name,
                         language=user_language
@@ -237,17 +242,73 @@ class NotificationHelper:
         )
     
     @staticmethod
-    def send_order_confirmation(buyer_id):
-        """Send order confirmation notification"""
+    def _build_order_detail_message(order):
+        """
+        Build a detailed message snippet with product, totals, and shipping info.
+        Safe to call with None; returns empty string if order is missing.
+        """
+        if not order:
+            return ''
+
+        try:
+            # Lazy import to avoid circular dependency
+            from products.models import Product
+
+            # Try to fetch product to enrich the message
+            product_title = getattr(order, 'product_title', '') or ''
+            product_obj = None
+            if getattr(order, 'product_id', None):
+                product_obj = Product.objects(id=order.product_id.id).first()
+                if product_obj and product_obj.title:
+                    product_title = product_obj.title
+
+            # Basic pricing details
+            total_price = getattr(order, 'total_price', None)
+            shipping_cost = getattr(order, 'shipping_cost', None)
+            offer_price = getattr(order, 'offer_price', None)
+            order_number = getattr(order, 'order_number', '')
+
+            # Delivery address is stored as a string; include if present
+            delivery_address = getattr(order, 'delivery_address', '') or ''
+
+            parts = []
+            if order_number:
+                parts.append(f"Order Number: {order_number}")
+            if product_title:
+                parts.append(f"Product: {product_title}")
+            if offer_price is not None:
+                parts.append(f"Item Price: {offer_price} SAR")
+            if shipping_cost is not None:
+                parts.append(f"Shipping: {shipping_cost} SAR")
+            if total_price is not None:
+                parts.append(f"Total: {total_price} SAR")
+            if delivery_address:
+                parts.append(f"Delivery Address: {delivery_address}")
+
+            if not parts:
+                return ''
+
+            return "<br>".join(parts)
+        except Exception:
+            # If anything fails, fall back silently to avoid blocking notifications
+            return ''
+
+    @staticmethod
+    def send_order_confirmation(buyer_id, order=None):
+        """Send order confirmation notification with optional order details"""
+        detail_message = NotificationHelper._build_order_detail_message(order)
+
         return NotificationHelper.send_notification_to_user(
-            buyer_id, 'buyer', 'order_confirmation'
+            buyer_id, 'buyer', 'order_confirmation', extra_message=detail_message
         )
     
     @staticmethod
-    def send_payment_successful(buyer_id):
-        """Send payment successful notification"""
+    def send_payment_successful(buyer_id, order=None):
+        """Send payment successful notification with optional order details"""
+        detail_message = NotificationHelper._build_order_detail_message(order)
+
         return NotificationHelper.send_notification_to_user(
-            buyer_id, 'buyer', 'payment_successful'
+            buyer_id, 'buyer', 'payment_successful', extra_message=detail_message
         )
     
     @staticmethod

@@ -87,7 +87,7 @@ class MoyasarPaymentService:
                     # Notify seller - order needs shipping
                     NotificationHelper.send_order_needs_shipping(str(order.seller_id.id))
                     # Notify buyer - payment successful
-                    NotificationHelper.send_payment_successful(str(order.buyer_id.id))
+                    NotificationHelper.send_payment_successful(str(order.buyer_id.id), order)
                 elif payment.status == 'failed':
                     # Notify buyer - payment failed
                     NotificationHelper.send_payment_failed(str(order.buyer_id.id))

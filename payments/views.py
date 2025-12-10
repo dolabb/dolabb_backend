@@ -422,7 +422,7 @@ def payment_webhook(request):
                         # Notify seller - order needs shipping
                         NotificationHelper.send_order_needs_shipping(str(order_check.seller_id.id))
                         # Notify buyer - payment successful
-                        NotificationHelper.send_payment_successful(str(order_check.buyer_id.id))
+                        NotificationHelper.send_payment_successful(str(order_check.buyer_id.id), order_check)
                         logger.info(f"✅ Email notifications sent successfully")
                     except Exception as e:
                         logger.error(f"Error sending payment notifications: {str(e)}")
@@ -740,13 +740,13 @@ def verify_payment(request):
                         # Notify seller - item sold (only when payment is confirmed)
                         NotificationHelper.send_item_sold(str(order.seller_id.id))
                         # Notify buyer - order confirmation (only when payment is confirmed)
-                        NotificationHelper.send_order_confirmation(str(order.buyer_id.id))
+                        NotificationHelper.send_order_confirmation(str(order.buyer_id.id), order)
                         # Notify seller - payment confirmed
                         NotificationHelper.send_payment_confirmed(str(order.seller_id.id))
                         # Notify seller - order needs shipping
                         NotificationHelper.send_order_needs_shipping(str(order.seller_id.id))
                         # Notify buyer - payment successful
-                        NotificationHelper.send_payment_successful(str(order.buyer_id.id))
+                        NotificationHelper.send_payment_successful(str(order.buyer_id.id), order)
                         logger.info(f"✅ All order confirmation emails sent successfully")
                     except Exception as e:
                         logger.error(f"Error sending order confirmation emails: {str(e)}")
