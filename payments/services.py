@@ -150,22 +150,49 @@ class MoyasarPaymentService:
             if not hasattr(settings, 'MOYASAR_SECRET_KEY') or not settings.MOYASAR_SECRET_KEY:
                 raise ValueError(
                     "MOYASAR_SECRET_KEY setting is missing. "
-                    "Please add MOYASAR_SECRET_KEY to your environment variables."
+                    "Please add MOYASAR_SECRET_KEY to your environment variables in Render dashboard. "
+                    "Format: sk_live_xxxxxxxxxxxxx (for production) or sk_test_xxxxxxxxxxxxx (for testing)"
+                )
+            
+            # Validate secret key format
+            secret_key = settings.MOYASAR_SECRET_KEY
+            if not secret_key.startswith(('sk_live_', 'sk_test_')):
+                raise ValueError(
+                    f"Invalid MOYASAR_SECRET_KEY format. "
+                    f"Expected format: sk_live_xxxxxxxxxxxxx or sk_test_xxxxxxxxxxxxx. "
+                    f"Current value starts with: {secret_key[:10] if len(secret_key) > 10 else 'too short'}"
                 )
             
             url = f"{settings.MOYASAR_API_URL}/{moyasar_payment_id}"
             headers = {
-                'Authorization': f'Bearer {settings.MOYASAR_SECRET_KEY}',
+                'Authorization': f'Bearer {secret_key}',
                 'Content-Type': 'application/json'
             }
             
             response = requests.get(url, headers=headers)
+            
+            # Handle 401 Unauthorized specifically
+            if response.status_code == 401:
+                raise ValueError(
+                    f"Moyasar API authentication failed (401 Unauthorized). "
+                    f"Please verify that MOYASAR_SECRET_KEY is correct in your Render environment variables. "
+                    f"Check: 1) Key is set correctly, 2) Key matches your Moyasar dashboard, 3) Key is for the correct environment (live/test)"
+                )
+            
             response.raise_for_status()
             payment_data = response.json()
             
             return payment_data
         except AttributeError as e:
             raise ValueError(f"Configuration error: {str(e)}. Please check your Django settings.")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise ValueError(
+                    f"Moyasar API authentication failed (401 Unauthorized). "
+                    f"Please verify MOYASAR_SECRET_KEY in Render environment variables. "
+                    f"Error: {str(e)}"
+                )
+            raise ValueError(f"Failed to verify payment status: {str(e)}")
         except requests.exceptions.RequestException as e:
             raise ValueError(f"Failed to verify payment status: {str(e)}")
     

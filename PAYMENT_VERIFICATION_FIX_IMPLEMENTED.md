@@ -134,7 +134,7 @@ const verifyResponse = await apiClient.get(`/api/payment/verify/?paymentId=${pay
    await apiClient.post('/api/payment/webhook/', {
      id: paymentId,
      status: 'paid',
-     // ... other payment data
+     // ... other payment data 
    });
    ```
 
