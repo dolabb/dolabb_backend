@@ -154,13 +154,25 @@ class MoyasarPaymentService:
                     "Format: sk_live_xxxxxxxxxxxxx (for production) or sk_test_xxxxxxxxxxxxx (for testing)"
                 )
             
-            # Validate secret key format
-            secret_key = settings.MOYASAR_SECRET_KEY
+            # Validate secret key format and strip whitespace
+            secret_key = settings.MOYASAR_SECRET_KEY.strip() if settings.MOYASAR_SECRET_KEY else None
+            
+            if not secret_key:
+                raise ValueError(
+                    "MOYASAR_SECRET_KEY is empty or None. "
+                    "Please check your Render environment variables."
+                )
+            
+            # Log first few characters for debugging (without exposing full key)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Using MOYASAR_SECRET_KEY starting with: {secret_key[:15]}... (length: {len(secret_key)})")
+            
             if not secret_key.startswith(('sk_live_', 'sk_test_')):
                 raise ValueError(
                     f"Invalid MOYASAR_SECRET_KEY format. "
                     f"Expected format: sk_live_xxxxxxxxxxxxx or sk_test_xxxxxxxxxxxxx. "
-                    f"Current value starts with: {secret_key[:10] if len(secret_key) > 10 else 'too short'}"
+                    f"Current value starts with: {secret_key[:20] if len(secret_key) > 20 else secret_key}"
                 )
             
             url = f"{settings.MOYASAR_API_URL}/{moyasar_payment_id}"
@@ -169,14 +181,22 @@ class MoyasarPaymentService:
                 'Content-Type': 'application/json'
             }
             
+            logger.info(f"Calling Moyasar API: {url}")
+            
             response = requests.get(url, headers=headers)
             
             # Handle 401 Unauthorized specifically
             if response.status_code == 401:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Moyasar API returned 401 Unauthorized. Secret key starts with: {secret_key[:15]}...")
+                logger.error(f"Response body: {response.text[:200] if hasattr(response, 'text') else 'N/A'}")
                 raise ValueError(
                     f"Moyasar API authentication failed (401 Unauthorized). "
-                    f"Please verify that MOYASAR_SECRET_KEY is correct in your Render environment variables. "
-                    f"Check: 1) Key is set correctly, 2) Key matches your Moyasar dashboard, 3) Key is for the correct environment (live/test)"
+                    f"Secret key starts with: {secret_key[:15]}... "
+                    f"Please verify: 1) Key is set correctly in Render (no quotes/spaces), "
+                    f"2) Key matches your Moyasar dashboard, 3) Key is for the correct environment (live/test), "
+                    f"4) Payment ID belongs to the same Moyasar account"
                 )
             
             response.raise_for_status()
