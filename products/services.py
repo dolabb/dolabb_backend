@@ -1756,20 +1756,8 @@ class OrderService:
     @staticmethod
     def create_order(buyer_id, data):
         """
-        Create order(s) from checkout.
-
-        Behaviour:
-        - Offer checkout (`offerId` present): returns a single `Order` instance (backward compatible).
-        - Cart checkout with items from a single seller: returns a single `Order` instance (backward compatible).
-        - Cart checkout with items from multiple sellers: returns a dict:
-            {
-                'is_group': True,
-                'orders': [Order, ...],
-                'grand_total': float,
-                'currency': 'SAR',
-            }
-          The caller (payments/checkout) can then use this to initiate a single
-          Moyasar payment while keeping per-seller orders separated.
+        Create order from checkout.
+        Returns a single Order instance.
         """
         buyer = User.objects(id=buyer_id).first()
         if not buyer:
@@ -1814,7 +1802,7 @@ class OrderService:
             shipping = offer.shipping_cost
             subtotal = base_amount + shipping
         else:
-            # Order from cart (now supports multiple products from multiple sellers)
+            # Order from cart
             cart_items = data.get('cartItems') or []
             if not cart_items:
                 raise ValueError("No items in cart")
@@ -1834,45 +1822,25 @@ class OrderService:
                 if str(buyer_id) == str(p.seller_id.id):
                     raise ValueError("You cannot purchase your own product")
 
-            # Group products by seller to support multi-seller carts
-            from collections import defaultdict
+            # Check that all products are from the same seller
+            seller_ids = {str(p.seller_id.id) for p in products_in_cart}
+            if len(seller_ids) > 1:
+                raise ValueError("All items in cart must be from the same seller")
 
-            seller_products = defaultdict(list)
+            # Calculate totals
+            base_amount = 0.0
+            shipping = 0.0
             for p in products_in_cart:
-                seller_products[str(p.seller_id.id)].append(p)
+                base_amount += p.price
+                shipping += p.shipping_cost
 
-            # Single-seller cart – keep backward compatible behaviour
-            if len(seller_products) == 1:
-                first_seller_id = list(seller_products.keys())[0]
-                seller_items = seller_products[first_seller_id]
-
-                base_amount = 0.0
-                shipping = 0.0
-                for p in seller_items:
-                    base_amount += p.price
-                    shipping += p.shipping_cost
-
-                subtotal = base_amount + shipping
-                # Use first product as the primary product for backward compatibility
-                product = seller_items[0]
-                product_id = str(product.id)
-                seller = User.objects(id=first_seller_id).first()
-            else:
-                # Multi-seller cart: we'll create one Order per seller later in this method
-                # but we still track aggregate amounts for the entire cart here if needed.
-                base_amount = 0.0
-                shipping = 0.0
-                for _, items in seller_products.items():
-                    for p in items:
-                        base_amount += p.price
-                        shipping += p.shipping_cost
-
-                subtotal = base_amount + shipping
-                product = None
-                product_id = None
-                seller = None
+            subtotal = base_amount + shipping
+            # Use first product as the primary product
+            product = products_in_cart[0]
+            product_id = str(product.id)
+            seller = User.objects(id=str(product.seller_id.id)).first()
         
-        # Single-order flow (offers and single-seller carts)
+        # Create order
         if 'offerId' in data and data['offerId'] or (product is not None and seller is not None):
             # Calculate platform fee (based on base amount, not including shipping)
             platform_fee = OrderService.calculate_platform_fee(base_amount)
@@ -1923,9 +1891,6 @@ class OrderService:
                     product_id=product_id,
                     product_title=product.title,
                     price=base_amount,
-                    # New multi-item fields (for cart checkout with multiple products)
-                    items=[p.id for p in products_in_cart] if 'offerId' not in data or not data['offerId'] else [],
-                    item_count=len(products_in_cart) if 'offerId' not in data or not data['offerId'] else 1,
                     currency=order_currency,  # Store currency from product
                     shipping_cost=shipping,
                     total_price=total_price,
@@ -1988,120 +1953,6 @@ class OrderService:
                     logging.error(f"Failed to create affiliate transaction: {str(e)}")
             
             return order
-
-        # Multi-seller cart – create one order per seller and return a grouped structure
-        orders = []
-        grand_total = 0.0
-
-        # We know we're in the cart path and `seller_products` exists here
-        from collections import defaultdict  # safe if imported again, Python handles it
-
-        cart_items = data.get('cartItems') or []
-        products_in_cart = []
-        for pid in cart_items:
-            product = Product.objects(id=pid).first()
-            if product:
-                products_in_cart.append(product)
-
-        seller_products = defaultdict(list)
-        for p in products_in_cart:
-            seller_products[str(p.seller_id.id)].append(p)
-
-        for seller_id_key, seller_items in seller_products.items():
-            seller_base_amount = sum(p.price for p in seller_items)
-            seller_shipping = sum(p.shipping_cost for p in seller_items)
-            seller_subtotal = seller_base_amount + seller_shipping
-
-            seller_platform_fee = OrderService.calculate_platform_fee(seller_base_amount)
-            seller_affiliate_commission = 0.0
-            if affiliate and affiliate_code:
-                seller_affiliate_commission = OrderService.calculate_affiliate_commission(
-                    seller_platform_fee, affiliate
-                )
-
-            seller_payout = seller_subtotal - seller_platform_fee
-            seller_total_price = seller_base_amount + seller_shipping + seller_platform_fee
-
-            # Unique order number per seller
-            seller_order_number = OrderService.generate_order_number()
-            while Order.objects(order_number=seller_order_number).first():
-                seller_order_number = OrderService.generate_order_number()
-
-            seller_user = User.objects(id=seller_id_key).first()
-            primary_product = seller_items[0]
-            seller_currency = primary_product.currency if hasattr(primary_product, 'currency') and primary_product.currency else 'SAR'
-
-            seller_order = Order(
-                order_number=seller_order_number,
-                buyer_id=buyer_id,
-                buyer_name=buyer.full_name,
-                seller_id=primary_product.seller_id.id,
-                seller_name=seller_user.full_name if seller_user else '',
-                product_id=primary_product.id,
-                product_title=primary_product.title,
-                price=seller_base_amount,
-                items=[p.id for p in seller_items],
-                item_count=len(seller_items),
-                currency=seller_currency,
-                shipping_cost=seller_shipping,
-                total_price=seller_total_price,
-                dolabb_fee=seller_platform_fee,
-                affiliate_code=affiliate_code,
-                affiliate_commission=seller_affiliate_commission,
-                seller_payout=seller_payout
-            )
-
-            # Add delivery address
-            address = data.get('deliveryAddress', {})
-            seller_order.delivery_address = address.get('address', '')
-            seller_order.full_name = address.get('fullName', '')
-            seller_order.phone = address.get('phone', '')
-            seller_order.city = address.get('city', '')
-            seller_order.postal_code = address.get('postalCode', '')
-            seller_order.country = address.get('country', '')
-            seller_order.additional_info = address.get('additionalInfo', '')
-
-            seller_order.save()
-            orders.append(seller_order)
-            grand_total += seller_total_price
-
-            # Affiliate transaction per seller order
-            if affiliate and affiliate_code and seller_affiliate_commission > 0:
-                try:
-                    from affiliates.models import AffiliateTransaction
-                    from admin_dashboard.models import FeeSettings
-
-                    settings = FeeSettings.objects().first()
-                    if affiliate and affiliate.commission_rate:
-                        try:
-                            used_commission_rate = float(affiliate.commission_rate)
-                        except (ValueError, TypeError):
-                            used_commission_rate = settings.default_affiliate_commission_percentage if settings else 25.0
-                    else:
-                        used_commission_rate = settings.default_affiliate_commission_percentage if settings else 25.0
-
-                    transaction = AffiliateTransaction(
-                        affiliate_id=affiliate.id,
-                        affiliate_name=affiliate.full_name,
-                        referred_user_id=buyer_id,
-                        referred_user_name=buyer.full_name,
-                        transaction_id=seller_order.id,
-                        commission_rate=used_commission_rate,
-                        commission_amount=seller_affiliate_commission,
-                        currency=seller_currency,
-                        status='pending'
-                    )
-                    transaction.save()
-                except Exception as e:
-                    import logging
-                    logging.error(f"Failed to create affiliate transaction for multi-seller order: {str(e)}")
-
-        return {
-            'is_group': True,
-            'orders': orders,
-            'grand_total': grand_total,
-            'currency': orders[0].currency if orders else 'SAR',
-        }
     
     @staticmethod
     def update_affiliate_earnings_on_payment_completion(order):
