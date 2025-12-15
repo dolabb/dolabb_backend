@@ -276,6 +276,7 @@ OTP_EXPIRY_SECONDS = int(os.getenv('OTP_EXPIRY_SECONDS', 300))  # Default: 5 min
 # Moyasar Payment Gateway
 MOYASAR_SECRET_KEY = os.getenv('MOYASAR_SECRET_KEY')
 MOYASAR_PUBLISHABLE_KEY = os.getenv('MOYASAR_PUBLISHABLE_KEY')
+MOYASAR_API_URL = os.getenv('MOYASAR_API_URL', 'https://api.moyasar.com/v1/payments')
 
 # File Upload Settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

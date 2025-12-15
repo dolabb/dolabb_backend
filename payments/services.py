@@ -36,6 +36,18 @@ class MoyasarPaymentService:
         if not amount:
             amount = order.total_price * 100  # Convert to cents/fils
         
+        # Check if required settings are available
+        if not hasattr(settings, 'MOYASAR_API_URL') or not settings.MOYASAR_API_URL:
+            raise ValueError(
+                "MOYASAR_API_URL setting is missing. "
+                "Please add MOYASAR_API_URL to your Django settings (default: 'https://api.moyasar.com/v1/payments')"
+            )
+        if not hasattr(settings, 'MOYASAR_SECRET_KEY') or not settings.MOYASAR_SECRET_KEY:
+            raise ValueError(
+                "MOYASAR_SECRET_KEY setting is missing. "
+                "Please add MOYASAR_SECRET_KEY to your environment variables."
+            )
+        
         url = settings.MOYASAR_API_URL
         
         headers = {
@@ -129,6 +141,18 @@ class MoyasarPaymentService:
     def verify_payment_status(moyasar_payment_id):
         """Verify payment status from Moyasar API"""
         try:
+            # Check if required settings are available
+            if not hasattr(settings, 'MOYASAR_API_URL') or not settings.MOYASAR_API_URL:
+                raise ValueError(
+                    "MOYASAR_API_URL setting is missing. "
+                    "Please add MOYASAR_API_URL to your Django settings (default: 'https://api.moyasar.com/v1/payments')"
+                )
+            if not hasattr(settings, 'MOYASAR_SECRET_KEY') or not settings.MOYASAR_SECRET_KEY:
+                raise ValueError(
+                    "MOYASAR_SECRET_KEY setting is missing. "
+                    "Please add MOYASAR_SECRET_KEY to your environment variables."
+                )
+            
             url = f"{settings.MOYASAR_API_URL}/{moyasar_payment_id}"
             headers = {
                 'Authorization': f'Bearer {settings.MOYASAR_SECRET_KEY}',
@@ -140,6 +164,8 @@ class MoyasarPaymentService:
             payment_data = response.json()
             
             return payment_data
+        except AttributeError as e:
+            raise ValueError(f"Configuration error: {str(e)}. Please check your Django settings.")
         except requests.exceptions.RequestException as e:
             raise ValueError(f"Failed to verify payment status: {str(e)}")
     

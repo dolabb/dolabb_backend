@@ -474,14 +474,18 @@ def payment_webhook(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 def verify_payment(request):
     """Verify payment status from Moyasar and update local records"""
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        moyasar_payment_id = request.data.get('paymentId') or request.data.get('payment_id')
+        # Support both GET (query params) and POST (body) requests
+        moyasar_payment_id = (
+            request.GET.get('paymentId') or request.GET.get('payment_id') or request.GET.get('id') or
+            request.data.get('paymentId') or request.data.get('payment_id') or request.data.get('id')
+        )
         
         if not moyasar_payment_id:
             return Response({
