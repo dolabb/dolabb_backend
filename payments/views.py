@@ -112,7 +112,10 @@ def payment_webhook(request):
         # Extract offerId from request data if provided (frontend can send it)
         offer_id_from_request = data.get('offerId') or data.get('offer_id') or payment_data.get('offerId')
         
-        logger.info(f"Extracted payment_id: {payment_id}, frontend_status: {frontend_status}, offerId: {offer_id_from_request}")
+        # Extract orderId from request data (frontend sends it)
+        order_id_from_request = data.get('orderId') or data.get('order_id') or payment_data.get('orderId') or payment_data.get('order_id')
+        
+        logger.info(f"Extracted payment_id: {payment_id}, frontend_status: {frontend_status}, offerId: {offer_id_from_request}, orderId: {order_id_from_request}")
         
         if not payment_id:
             logger.error("Payment ID not found in webhook data")
@@ -380,11 +383,18 @@ def payment_webhook(request):
                     else:
                         logger.warning(f"Offer not found: {offer_id}")
             
+            # If still not found, try to find by orderId from request (frontend sends it)
+            if not order and order_id_from_request:
+                logger.info(f"Trying to find order by orderId from request: {order_id_from_request}")
+                order = Order.objects(id=order_id_from_request).first()
+                if order:
+                    logger.info(f"Found order {order.id} by orderId from request")
+            
             # If still not found, try to find by metadata order_id
             if not order:
                 order_id = payment_data.get('metadata', {}).get('order_id') or data.get('metadata', {}).get('order_id')
                 if order_id:
-                    logger.info(f"Trying to find order by order_id: {order_id}")
+                    logger.info(f"Trying to find order by order_id from metadata: {order_id}")
                     order = Order.objects(id=order_id).first()
             
             if order:
@@ -394,6 +404,16 @@ def payment_webhook(request):
                 if not existing_payment:
                     # Get currency from order first, then payment_data, then default to SAR
                     payment_currency = order.currency or payment_data.get('currency') or 'SAR'
+                    
+                    # Enhance metadata with product title and ensure isGroup is false for cart type
+                    enhanced_metadata = payment_data.copy() if isinstance(payment_data, dict) else {}
+                    if order.product_title:
+                        enhanced_metadata['product'] = order.product_title
+                    # Ensure isGroup is false for cart type (not grouped)
+                    if enhanced_metadata.get('type') == 'cart':
+                        enhanced_metadata['isGroup'] = False
+                        enhanced_metadata['isGroupOrder'] = False
+                    
                     payment = Payment(
                         order_id=order.id,
                         buyer_id=order.buyer_id.id,
@@ -401,12 +421,22 @@ def payment_webhook(request):
                         amount=float(amount) / 100 if amount else 0,
                         currency=payment_currency,
                         status='completed' if payment_status == 'paid' else 'pending',
-                        metadata=payment_data
+                        metadata=enhanced_metadata
                     )
                     payment.save()
-                    logger.info(f"Created payment record for order {order.id}")
+                    logger.info(f"Created payment record for order {order.id} with enhanced metadata")
                 else:
                     logger.info(f"Payment record already exists: {existing_payment.id}")
+                    # Update metadata if payment exists but metadata is missing product title
+                    if existing_payment.metadata:
+                        if not existing_payment.metadata.get('product') and order.product_title:
+                            existing_payment.metadata['product'] = order.product_title
+                        # Ensure isGroup is false for cart type
+                        if existing_payment.metadata.get('type') == 'cart':
+                            existing_payment.metadata['isGroup'] = False
+                            existing_payment.metadata['isGroupOrder'] = False
+                        existing_payment.save()
+                        logger.info(f"Updated payment {existing_payment.id} metadata with product title")
                 
                 # Update order payment_id if not set
                 if not order.payment_id:
