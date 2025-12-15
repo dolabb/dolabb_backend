@@ -16,24 +16,63 @@ class MoyasarPaymentService:
     MOYASAR_SUPPORTED_CURRENCIES = ['SAR', 'USD', 'EUR', 'GBP', 'KWD', 'AED', 'OMR', 'QAR']
     
     @staticmethod
-    def process_payment(order_id, card_details=None, token_id=None, amount=None, description=None, metadata=None):
-        """Process payment via Moyasar"""
-        order = Order.objects(id=order_id).first()
-        if not order:
-            raise ValueError("Order not found")
-        
-        # Get currency from order, default to SAR if not set
-        order_currency = order.currency or 'SAR'
-        
-        # Validate currency is supported by Moyasar
-        if order_currency not in MoyasarPaymentService.MOYASAR_SUPPORTED_CURRENCIES:
-            raise ValueError(
-                f"Currency '{order_currency}' is not supported by Moyasar. "
-                f"Supported currencies: {', '.join(MoyasarPaymentService.MOYASAR_SUPPORTED_CURRENCIES)}"
-            )
-        
-        if not amount:
-            amount = order.total_price * 100  # Convert to cents/fils
+    def process_payment(
+        order_id,
+        card_details=None,
+        token_id=None,
+        amount=None,
+        description=None,
+        metadata=None,
+        order_ids=None,
+    ):
+        """
+        Process payment via Moyasar.
+
+        - For traditional single-seller checkout, `order_id` is a single Order id and `order_ids` is None.
+        - For multi-seller cart checkout, `order_ids` should be a list of Order ids for all seller orders.
+          In that case, we will:
+            - charge Moyasar once for the combined amount,
+            - create a Payment linked to the "primary" order (order_id / first in order_ids),
+            - also attach all related orders to `Payment.orders`,
+            - update payment_status / status for all of them on success.
+        """
+        # Normalise orders list
+        orders = []
+        primary_order = None
+
+        if order_ids:
+            # Multi-order (multi-seller) payment
+            orders = list(Order.objects(id__in=order_ids))
+            if not orders:
+                raise ValueError("No valid orders found for provided orderIds")
+
+            # Ensure all orders belong to the same buyer
+            buyer_ids = {str(o.buyer_id.id) for o in orders if hasattr(o.buyer_id, 'id')}
+            if len(buyer_ids) > 1:
+                raise ValueError("All orders in a group payment must belong to the same buyer")
+
+            # Ensure all currencies are the same
+            currencies = {o.currency or 'SAR' for o in orders}
+            if len(currencies) > 1:
+                raise ValueError("All orders in a group payment must use the same currency")
+
+            primary_order = orders[0]
+            order_currency = primary_order.currency or 'SAR'
+
+            # Use provided amount or compute from all orders
+            if not amount:
+                amount = sum(o.total_price for o in orders) * 100  # to cents/fils
+        else:
+            # Single-order payment (backward compatible)
+            primary_order = Order.objects(id=order_id).first()
+            if not primary_order:
+                raise ValueError("Order not found")
+
+            orders = [primary_order]
+            order_currency = primary_order.currency or 'SAR'
+
+            if not amount:
+                amount = primary_order.total_price * 100  # Convert to cents/fils
         
         url = settings.MOYASAR_API_URL
         
@@ -45,7 +84,7 @@ class MoyasarPaymentService:
         payload = {
             'amount': int(amount),
             'currency': order_currency,
-            'description': description or f'Order {order.order_number}',
+            'description': description or f'Order {primary_order.order_number}',
             'metadata': metadata or {}
         }
         
@@ -73,44 +112,49 @@ class MoyasarPaymentService:
             
             # Create payment record
             payment = Payment(
-                order_id=order_id,
-                buyer_id=order.buyer_id.id,
+                order_id=primary_order.id,
+                orders=[o.id for o in orders],
+                is_group_payment='group' if len(orders) > 1 else 'single',
+                buyer_id=primary_order.buyer_id.id,
                 amount=amount / 100,
                 currency=order_currency,
                 moyasar_payment_id=payment_data.get('id'),
                 status='completed' if payment_data.get('status') == 'paid' else 'pending',
-                metadata=payment_data
+                metadata=payment_data,
             )
             payment.save()
-            
-            # Update order payment status
-            order.payment_status = payment.status
-            order.payment_id = payment_data.get('id')
-            # Set order status to 'packed' after payment is completed
-            if payment.status == 'completed':
-                order.status = 'packed'
-            order.save()
+
+            # Update payment status on all related orders
+            for o in orders:
+                o.payment_status = payment.status
+                o.payment_id = payment_data.get('id')
+                # Set order status to 'packed' after payment is completed
+                if payment.status == 'completed':
+                    o.status = 'packed'
+                o.save()
             
             # Send notifications based on payment status
             try:
                 from notifications.notification_helper import NotificationHelper
                 if payment.status == 'completed':
-                    # Notify seller - payment confirmed
-                    NotificationHelper.send_payment_confirmed(str(order.seller_id.id))
-                    # Notify seller - order needs shipping
-                    NotificationHelper.send_order_needs_shipping(str(order.seller_id.id))
-                    # Notify buyer - payment successful
-                    NotificationHelper.send_payment_successful(str(order.buyer_id.id), order)
+                    # Notify each seller and the buyer per order
+                    for o in orders:
+                        # Notify seller - payment confirmed
+                        NotificationHelper.send_payment_confirmed(str(o.seller_id.id))
+                        # Notify seller - order needs shipping
+                        NotificationHelper.send_order_needs_shipping(str(o.seller_id.id))
+                        # Notify buyer - payment successful
+                        NotificationHelper.send_payment_successful(str(o.buyer_id.id), o)
                 elif payment.status == 'failed':
-                    # Notify buyer - payment failed
-                    NotificationHelper.send_payment_failed(str(order.buyer_id.id))
+                    # Notify buyer - payment failed (once is enough)
+                    NotificationHelper.send_payment_failed(str(primary_order.buyer_id.id))
             except Exception as e:
                 import logging
                 logging.error(f"Error sending payment notifications: {str(e)}")
             
-            # Update offer status from 'accepted' to 'paid' if order has an associated offer
-            if payment.status == 'completed' and order.offer_id:
-                offer = Offer.objects(id=order.offer_id.id).first()
+            # Update offer status from 'accepted' to 'paid' if primary order has an associated offer
+            if payment.status == 'completed' and primary_order.offer_id:
+                offer = Offer.objects(id=primary_order.offer_id.id).first()
                 if offer and offer.status == 'accepted':
                     offer.status = 'paid'
                     offer.updated_at = datetime.utcnow()
@@ -181,16 +225,20 @@ class MoyasarPaymentService:
         
         logger.info(f"Updating payment status: {moyasar_payment_id} -> {payment_status}")
         logger.info(f"Payment record: {payment.id}, Order: {payment.order_id.id}")
+
+        # Determine all related orders (multi-seller aware)
+        related_orders = list(payment.orders) if getattr(payment, 'orders', None) else [payment.order_id]
         
         if payment_status == 'paid':
             payment.status = 'completed'
-            payment.order_id.payment_status = 'completed'
-            # Set order status to 'packed' after payment is completed
-            payment.order_id.status = 'packed'
-            payment.order_id.save()
-            logger.info(f"Order {payment.order_id.id} status updated to 'packed', payment_status: 'completed'")
+            for o in related_orders:
+                o.payment_status = 'completed'
+                # Set order status to 'packed' after payment is completed
+                o.status = 'packed'
+                o.save()
+                logger.info(f"Order {o.id} status updated to 'packed', payment_status: 'completed'")
             
-            # Update offer status from 'accepted' to 'paid' if order has an associated offer
+            # Update offer status from 'accepted' to 'paid' if primary order has an associated offer
             if payment.order_id.offer_id:
                 offer_id = payment.order_id.offer_id.id
                 logger.info(f"Order has associated offer: {offer_id}")
@@ -211,16 +259,18 @@ class MoyasarPaymentService:
             else:
                 logger.info(f"Order {payment.order_id.id} has no associated offer_id")
             
-            # Update affiliate earnings when payment is completed
-            OrderService.update_affiliate_earnings_on_payment_completion(payment.order_id)
+            # Update affiliate earnings when payment is completed (per order)
+            for o in related_orders:
+                OrderService.update_affiliate_earnings_on_payment_completion(o)
         elif payment_status in ['failed', 'declined', 'canceled', 'cancelled']:
             payment.status = 'failed'
             # Keep order payment_status as 'pending' - don't mark as failed
             # Order should remain pending until payment is successful
-            if payment.order_id.payment_status != 'pending':
-                payment.order_id.payment_status = 'pending'
-                payment.order_id.save()
-            logger.info(f"Payment {moyasar_payment_id} marked as failed, order kept as pending")
+            for o in related_orders:
+                if o.payment_status != 'pending':
+                    o.payment_status = 'pending'
+                    o.save()
+            logger.info(f"Payment {moyasar_payment_id} marked as failed, related orders kept as pending")
         
         payment.save()
         logger.info(f"Payment {payment.id} saved successfully")

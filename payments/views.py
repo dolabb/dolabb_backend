@@ -15,7 +15,47 @@ def checkout(request):
     """Create checkout/order"""
     try:
         buyer_id = str(request.user.id)
-        order = OrderService.create_order(buyer_id, request.data)
+        order_result = OrderService.create_order(buyer_id, request.data)
+
+        # Multi-seller group response
+        if isinstance(order_result, dict) and order_result.get('is_group'):
+            orders = order_result.get('orders', [])
+            grand_total = order_result.get('grand_total', 0.0)
+            currency = order_result.get('currency', 'SAR')
+
+            # Build per-order summary for frontend (one entry per seller)
+            orders_summary = []
+            for o in orders:
+                try:
+                    label = o.product_title or ""
+                    if getattr(o, "item_count", 1) and o.item_count > 1:
+                        label = f"{o.item_count} items from this seller"
+                except Exception:
+                    label = o.product_title or ""
+
+                orders_summary.append({
+                    'orderId': str(o.id),
+                    'sellerId': str(o.seller_id.id) if hasattr(o.seller_id, 'id') else str(o.seller_id),
+                    'product': label,
+                    'price': o.price,
+                    'shipping': o.shipping_cost,
+                    'platformFee': o.dolabb_fee,
+                    'total': o.total_price,
+                })
+
+            return Response({
+                'success': True,
+                'isGroup': True,
+                'orderIds': [str(o.id) for o in orders],
+                'orders': orders_summary,
+                'checkoutData': {
+                    'total': grand_total,
+                    'currency': currency,
+                }
+            }, status=status.HTTP_201_CREATED)
+
+        # Single-order (offer or single-seller cart) – keep existing behaviour
+        order = order_result
 
         # Build a user-friendly summary for products in the order
         # For single-item orders, keep existing behavior (product title)
@@ -29,6 +69,7 @@ def checkout(request):
         except Exception:
             # If anything goes wrong, fall back to original title
             product_label = order.product_title or ""
+
         return Response({
             'success': True,
             'orderId': str(order.id),
@@ -55,20 +96,33 @@ def process_payment(request):
     """Process payment via Moyasar"""
     try:
         order_id = request.data.get('orderId')
+        # New: support multi-seller group payments
+        order_ids = request.data.get('orderIds') or request.data.get('orders')
         token_id = request.data.get('tokenId')
         card_details = request.data.get('cardDetails')
         amount = request.data.get('amount')
         description = request.data.get('description')
         metadata = request.data.get('metadata', {})
         
-        if not order_id:
-            return Response({'success': False, 'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not order_id and not order_ids:
+            return Response({'success': False, 'error': 'Order ID or orderIds is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Normalise order_ids to a list of strings if provided
+        if order_ids and isinstance(order_ids, str):
+            # Allow comma-separated string from frontend
+            order_ids = [oid.strip() for oid in order_ids.split(',') if oid.strip()]
         
         if not token_id and not card_details:
             return Response({'success': False, 'error': 'Either tokenId or cardDetails is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         payment, payment_data = MoyasarPaymentService.process_payment(
-            order_id, card_details, token_id, amount, description, metadata
+            order_id,
+            card_details,
+            token_id,
+            amount,
+            description,
+            metadata,
+            order_ids=order_ids,
         )
         
         return Response({
@@ -82,7 +136,9 @@ def process_payment(request):
                 'order': {
                     'id': str(payment.order_id.id),
                     'orderNumber': payment.order_id.order_number
-                }
+                },
+                # For multi-seller payments, expose all related order ids for the frontend
+                'orders': [str(o.id) for o in getattr(payment, 'orders', [])] if getattr(payment, 'orders', None) else [str(payment.order_id.id)]
             }
         }, status=status.HTTP_200_OK)
     except ValueError as e:
