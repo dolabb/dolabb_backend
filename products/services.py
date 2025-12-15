@@ -1799,32 +1799,45 @@ class OrderService:
             shipping = offer.shipping_cost
             subtotal = base_amount + shipping
         else:
-            # Order from cart (simplified - single product for now)
-            product_id = data['cartItems'][0] if data.get('cartItems') else None
-            if not product_id:
+            # Order from cart (now supports multiple products)
+            cart_items = data.get('cartItems') or []
+            if not cart_items:
                 raise ValueError("No items in cart")
-            
-            product = Product.objects(id=product_id).first()
-            if not product:
-                raise ValueError("Product not found")
-            
-            # Prevent sellers from buying their own products
-            if str(buyer_id) == str(product.seller_id.id):
-                raise ValueError("You cannot purchase your own product")
-            
-            # If no affiliate code in checkout, use product's affiliate_code (from listing)
-            if not affiliate_code and product.affiliate_code:
-                affiliate_code = product.affiliate_code.strip()
-                if affiliate_code:
-                    from authentication.models import Affiliate
-                    affiliate = Affiliate.objects(affiliate_code=affiliate_code, status='active').first()
-                    if not affiliate:
-                        affiliate_code = None  # Invalid affiliate code, ignore it
-            
-            seller = User.objects(id=product.seller_id.id).first()
-            base_amount = product.price
-            shipping = product.shipping_cost
+
+            # Load all products from cart
+            products_in_cart = []
+            for pid in cart_items:
+                product = Product.objects(id=pid).first()
+                if not product:
+                    raise ValueError("One of the products in cart was not found")
+                products_in_cart.append(product)
+
+            # Ensure all products are active and belong to the same seller
+            first_seller_id = None
+            base_amount = 0.0
+            shipping = 0.0
+            for product in products_in_cart:
+                if product.status != 'active':
+                    raise ValueError("One of the products in cart is not available")
+
+                # Prevent sellers from buying their own products
+                if str(buyer_id) == str(product.seller_id.id):
+                    raise ValueError("You cannot purchase your own product")
+
+                if first_seller_id is None:
+                    first_seller_id = product.seller_id.id
+                elif str(first_seller_id) != str(product.seller_id.id):
+                    # For now, require all items in cart to be from the same seller
+                    raise ValueError("All items in cart must be from the same seller to checkout together")
+
+                base_amount += product.price
+                shipping += product.shipping_cost
+
             subtotal = base_amount + shipping
+            # Use first product as the primary product for backward compatibility
+            product = products_in_cart[0]
+            product_id = str(product.id)
+            seller = User.objects(id=first_seller_id).first()
         
         # Calculate platform fee (based on base amount, not including shipping)
         platform_fee = OrderService.calculate_platform_fee(base_amount)
@@ -1875,6 +1888,9 @@ class OrderService:
                 product_id=product_id,
                 product_title=product.title,
                 price=base_amount,
+                # New multi-item fields (for cart checkout with multiple products)
+                items=[p.id for p in products_in_cart] if 'offerId' not in data or not data['offerId'] else [],
+                item_count=len(products_in_cart) if 'offerId' not in data or not data['offerId'] else 1,
                 currency=order_currency,  # Store currency from product
                 shipping_cost=shipping,
                 total_price=total_price,

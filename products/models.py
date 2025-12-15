@@ -101,8 +101,12 @@ class Order(Document):
     buyer_name = StringField()
     seller_id = ReferenceField(User, required=True)
     seller_name = StringField()
+    # Primary product for backward compatibility (first item in a cart-based order)
     product_id = ReferenceField(Product, required=True)
     product_title = StringField()
+    # New: support multi-item cart orders
+    items = ListField(ReferenceField(Product))  # All products included in the order (for cart checkout)
+    item_count = IntField(default=1)  # Total number of items in the order
     offer_id = ReferenceField(Offer)
     price = FloatField(required=True)
     offer_price = FloatField()

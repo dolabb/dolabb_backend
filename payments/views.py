@@ -16,12 +16,24 @@ def checkout(request):
     try:
         buyer_id = str(request.user.id)
         order = OrderService.create_order(buyer_id, request.data)
-        
+
+        # Build a user-friendly summary for products in the order
+        # For single-item orders, keep existing behavior (product title)
+        # For multi-item cart orders, show a combined label
+        product_label = order.product_title or ""
+        try:
+            # item_count defaults to 1 in the model for backward compatibility
+            if hasattr(order, "item_count") and order.item_count and order.item_count > 1:
+                # Example: "3 items in your cart"
+                product_label = f"{order.item_count} items in your cart"
+        except Exception:
+            # If anything goes wrong, fall back to original title
+            product_label = order.product_title or ""
         return Response({
             'success': True,
             'orderId': str(order.id),
             'checkoutData': {
-                'product': order.product_title,
+                'product': product_label,
                 'size': '',  # TODO: Add size if available
                 'price': order.price,
                 'offerPrice': order.offer_price,
