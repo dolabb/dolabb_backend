@@ -160,6 +160,151 @@ def get_user_offers(request):
 
 
 @api_view(['PUT'])
+def update_order_status(request, order_id):
+    """
+    Update order status (seller action)
+    Allows seller to update order status to: 'packed', 'ready', 'shipped', 'delivered', 'cancelled'
+    """
+    try:
+        from django.conf import settings
+        import os
+        import uuid
+        from datetime import datetime
+        
+        seller_id = str(request.user.id)
+        new_status = request.data.get('status', '').strip().lower()
+        tracking_number = request.data.get('trackingNumber', '')
+        shipment_proof_url = None
+        
+        # Validate status
+        allowed_statuses = ['pending', 'packed', 'ready', 'shipped', 'delivered', 'cancelled']
+        if not new_status or new_status not in allowed_statuses:
+            return Response({
+                'success': False,
+                'error': f'Invalid status. Allowed values: {", ".join(allowed_statuses)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Handle shipment proof upload (file or URL) - required for 'delivered' status
+        if new_status == 'delivered':
+            if 'shipmentProof' in request.FILES:
+                image_file = request.FILES['shipmentProof']
+                
+                # Validate file type
+                allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+                if image_file.content_type not in allowed_types:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid file type. Only images (JPEG, PNG, GIF, WebP) are allowed.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Generate unique filename
+                file_extension = os.path.splitext(image_file.name)[1]
+                unique_filename = f"shipment_{uuid.uuid4().hex[:12]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
+                
+                # Try VPS upload first if enabled
+                vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+                absolute_url = None
+                
+                if vps_enabled:
+                    try:
+                        from storage.vps_helper import upload_file_to_vps
+                        image_bytes = image_file.read()
+                        success, result = upload_file_to_vps(
+                            image_bytes,
+                            'uploads/shipments',
+                            unique_filename
+                        )
+                        if success:
+                            absolute_url = result
+                    except Exception as e:
+                        import logging
+                        logging.warning(f"VPS upload failed: {str(e)}")
+                
+                # Fallback to local storage
+                if not absolute_url:
+                    upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'shipments')
+                    os.makedirs(upload_dir, exist_ok=True)
+                    
+                    file_path = os.path.join(upload_dir, unique_filename)
+                    
+                    # Save file
+                    with open(file_path, 'wb+') as destination:
+                        for chunk in image_file.chunks():
+                            destination.write(chunk)
+                    
+                    # Generate URL
+                    media_url = settings.MEDIA_URL.rstrip('/')
+                    if not media_url.startswith('/'):
+                        media_url = '/' + media_url
+                    file_url = f"{media_url}/uploads/shipments/{unique_filename}"
+                    absolute_url = request.build_absolute_uri(file_url)
+                
+                shipment_proof_url = absolute_url
+            
+            # Handle URL (if provided directly)
+            elif 'shipmentProofUrl' in request.data:
+                shipment_proof_url = request.data.get('shipmentProofUrl', '').strip()
+                if not shipment_proof_url:
+                    return Response({
+                        'success': False,
+                        'error': 'Shipment proof is required for delivered status. Provide shipmentProof (file) or shipmentProofUrl.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Shipment proof is required for delivered status. Provide shipmentProof (file) or shipmentProofUrl.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update order status
+        order = OrderService.update_order_status(
+            order_id, 
+            seller_id, 
+            new_status, 
+            tracking_number=tracking_number if tracking_number else None,
+            shipment_proof=shipment_proof_url
+        )
+        
+        # Send notifications based on status
+        try:
+            from notifications.notification_helper import NotificationHelper
+            if new_status == 'delivered':
+                # Notify buyer - item delivered
+                NotificationHelper.send_item_delivered(str(order.buyer_id.id))
+                # Notify buyer - review your purchase
+                NotificationHelper.send_review_your_purchase(str(order.buyer_id.id))
+            elif new_status == 'shipped':
+                # Notify buyer - seller shipped item
+                NotificationHelper.send_seller_shipped_item(str(order.buyer_id.id))
+            elif new_status == 'cancelled':
+                # Notify buyer - order canceled
+                NotificationHelper.send_order_canceled(str(order.buyer_id.id))
+        except Exception as e:
+            import logging
+            logging.error(f"Error sending status change notifications: {str(e)}")
+        
+        response_data = {
+            'success': True,
+            'order': {
+                'id': str(order.id),
+                'status': order.status,
+                'trackingNumber': order.tracking_number if order.tracking_number else None
+            },
+            'message': f'Order status updated to {new_status}'
+        }
+        
+        if shipment_proof_url:
+            response_data['order']['shipmentProof'] = order.shipment_proof
+            response_data['message'] = 'Order marked as delivered with shipment proof. Earnings are now available for payout.'
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
 def ship_order(request, order_id):
     """
     Ship order (seller action)
