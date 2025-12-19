@@ -42,10 +42,10 @@ urlpatterns = [
     
     # Disputes
     path('disputes/', views.get_disputes, name='get_disputes'),
+    path('disputes/<str:dispute_id>/', views.get_dispute_details, name='get_dispute_details'),
     path('disputes/<str:dispute_id>/update/', views.update_dispute, name='update_dispute'),
     path('disputes/<str:dispute_id>/close/', views.close_dispute, name='close_dispute'),
-    path('disputes/<str:dispute_id>/', views.get_dispute_details, name='get_dispute_details'),
-    path('disputes/<str:dispute_id>/messages/', views.add_dispute_message, name='add_dispute_message'),
+    path('disputes/<str:dispute_id>/comments/', views.add_dispute_message, name='add_dispute_message'),
     path('disputes/<str:dispute_id>/evidence/', views.upload_dispute_evidence, name='upload_dispute_evidence'),
     
     # User Management - Additional

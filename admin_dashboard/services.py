@@ -864,6 +864,7 @@ class DisputeService:
             buyer_name=buyer.full_name or buyer.username,
             seller_id=seller,
             seller_name=order.seller_name or (seller.username if seller else ''),
+            order_id=order,
             item_id=product,
             item_title=order.product_title or (product.title if product else ''),
             description=description,
@@ -895,6 +896,7 @@ class DisputeService:
                 'buyerName': dispute.buyer_name,
                 'sellerId': str(dispute.seller_id.id),
                 'SellerName': dispute.seller_name,
+                'orderId': str(dispute.order_id.id) if dispute.order_id else '',
                 'itemId': str(dispute.item_id.id),
                 'itemTitle': dispute.item_title,
                 'description': dispute.description,
@@ -942,21 +944,64 @@ class DisputeService:
         return DisputeService.update_dispute_status(dispute_id, 'closed', resolution=resolution)
     
     @staticmethod
-    def get_dispute_details(dispute_id):
+    def get_buyer_disputes(buyer_id, page=1, limit=20, status_filter=None):
+        """Get disputes for a specific buyer"""
+        query = Dispute.objects(buyer_id=buyer_id)
+        
+        if status_filter:
+            query = query.filter(status=status_filter)
+        
+        total = query.count()
+        skip = (page - 1) * limit
+        disputes = query.order_by('-created_at').skip(skip).limit(limit)
+        
+        disputes_list = []
+        for dispute in disputes:
+            disputes_list.append({
+                '_id': str(dispute.id),
+                'caseNumber': dispute.case_number,
+                'type': dispute.dispute_type,
+                'buyerName': dispute.buyer_name,
+                'sellerName': dispute.seller_name,
+                'orderId': str(dispute.order_id.id) if dispute.order_id else '',
+                'itemTitle': dispute.item_title,
+                'description': dispute.description,
+                'status': dispute.status,
+                'createdAt': dispute.created_at.isoformat(),
+                'updatedAt': dispute.updated_at.isoformat(),
+                'messageCount': len(dispute.messages) if dispute.messages else 0
+            })
+        
+        return disputes_list, total
+    
+    @staticmethod
+    def get_dispute_details(dispute_id, user_id=None, user_type=None):
         """Get dispute details"""
         dispute = Dispute.objects(id=dispute_id).first()
         if not dispute:
             raise ValueError("Dispute not found")
         
+        # Check if user has access (buyer can only see their own disputes)
+        if user_id and user_type == 'buyer':
+            if str(dispute.buyer_id.id) != user_id:
+                raise ValueError("Unauthorized: You can only view your own disputes")
+        
         buyer = User.objects(id=dispute.buyer_id.id).first()
         seller = User.objects(id=dispute.seller_id.id).first()
         product = Product.objects(id=dispute.item_id.id).first()
+        order = Order.objects(id=dispute.order_id.id).first() if dispute.order_id else None
         
-        # Get messages (if available in model)
-        messages = []  # Add if Dispute model has messages field
-        
-        # Get evidence (if available in model)
-        evidence = []  # Add if Dispute model has evidence field
+        # Format messages
+        messages = []
+        if dispute.messages:
+            for msg in dispute.messages:
+                messages.append({
+                    'message': msg.message,
+                    'senderType': msg.sender_type,
+                    'senderId': msg.sender_id,
+                    'senderName': msg.sender_name,
+                    'createdAt': msg.created_at.isoformat()
+                })
         
         # Build timeline
         timeline = [
@@ -987,6 +1032,10 @@ class DisputeService:
                 'name': dispute.seller_name,
                 'email': seller.email if seller else ''
             },
+            'order': {
+                'id': str(dispute.order_id.id) if dispute.order_id else '',
+                'orderNumber': order.order_number if order else ''
+            },
             'item': {
                 'id': str(dispute.item_id.id),
                 'title': dispute.item_title,
@@ -999,40 +1048,100 @@ class DisputeService:
             'created_at': dispute.created_at.isoformat(),
             'updated_at': dispute.updated_at.isoformat(),
             'messages': messages,
-            'evidence': evidence,
             'timeline': timeline
         }
     
     @staticmethod
-    def add_dispute_message(dispute_id, message, message_type, admin_id):
-        """Add message to dispute"""
+    def add_dispute_comment(dispute_id, message, sender_id, sender_type, sender_name):
+        """Add comment to dispute (buyer or admin)"""
+        from admin_dashboard.models import DisputeMessage
+        
         dispute = Dispute.objects(id=dispute_id).first()
         if not dispute:
             raise ValueError("Dispute not found")
         
-        if message_type not in ['admin_note', 'internal_note']:
-            raise ValueError("Invalid message type")
+        if sender_type not in ['buyer', 'admin']:
+            raise ValueError("Invalid sender type. Must be 'buyer' or 'admin'")
         
-        # For now, append to admin_notes
-        # In future, could add a separate messages collection
-        if dispute.admin_notes:
-            dispute.admin_notes += f"\n[{message_type.upper()}] {message}"
-        else:
-            dispute.admin_notes = f"[{message_type.upper()}] {message}"
+        # Verify buyer can only comment on their own disputes
+        if sender_type == 'buyer' and str(dispute.buyer_id.id) != sender_id:
+            raise ValueError("Unauthorized: You can only comment on your own disputes")
         
+        # Create message
+        dispute_message = DisputeMessage(
+            message=message,
+            sender_type=sender_type,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            created_at=datetime.utcnow()
+        )
+        
+        # Add to dispute messages
+        if not dispute.messages:
+            dispute.messages = []
+        dispute.messages.append(dispute_message)
         dispute.updated_at = datetime.utcnow()
         dispute.save()
         
+        # Send email notification if admin replied
+        if sender_type == 'admin':
+            try:
+                buyer = User.objects(id=dispute.buyer_id.id).first()
+                if buyer and buyer.email:
+                    from notifications.email_templates import send_notification_email
+                    from notifications.templates import get_notification_template
+                    
+                    # Get user language preference (default to 'en')
+                    user_language = getattr(buyer, 'language', 'en') or 'en'
+                    if user_language not in ['en', 'ar']:
+                        user_language = 'en'
+                    
+                    # Create custom notification for admin reply
+                    if user_language == 'ar':
+                        email_title = f'رد جديد على النزاع {dispute.case_number}'
+                        email_message = f'قام المسؤول بالرد على نزاعك. يرجى تسجيل الدخول لعرض الرد.'
+                    else:
+                        email_title = f'New Reply on Dispute {dispute.case_number}'
+                        email_message = f'An admin has replied to your dispute. Please log in to view the response.'
+                    
+                    # Get buyer name for personalization
+                    buyer_name = dispute.buyer_name or (buyer.username if buyer else 'User')
+                    
+                    send_notification_email(
+                        email=buyer.email,
+                        notification_title=email_title,
+                        notification_message=email_message,
+                        notification_type='info',
+                        user_name=buyer_name,
+                        language=user_language
+                    )
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending dispute reply email notification: {str(e)}")
+        
         return {
-            'id': str(dispute.id),
-            'message': message,
-            'type': message_type,
-            'created_at': datetime.utcnow().isoformat(),
-            'created_by': {
-                'id': admin_id,
-                'name': 'Admin User'
-            }
+            'id': str(dispute_message.id) if hasattr(dispute_message, 'id') else 'temp_id',
+            'message': dispute_message.message,
+            'senderType': dispute_message.sender_type,
+            'senderId': dispute_message.sender_id,
+            'senderName': dispute_message.sender_name,
+            'createdAt': dispute_message.created_at.isoformat()
         }
+    
+    @staticmethod
+    def add_dispute_message(dispute_id, message, message_type, admin_id):
+        """Add admin note/message to dispute (legacy method for backward compatibility)"""
+        from authentication.models import User
+        admin = User.objects(id=admin_id).first()
+        admin_name = admin.full_name or admin.username if admin else 'Admin'
+        
+        return DisputeService.add_dispute_comment(
+            dispute_id=dispute_id,
+            message=message,
+            sender_id=admin_id,
+            sender_type='admin',
+            sender_name=admin_name
+        )
 
 
 class HeroSectionService:

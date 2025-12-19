@@ -617,3 +617,85 @@ def create_dispute(request):
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_my_disputes(request):
+    """Get buyer's own disputes"""
+    try:
+        from admin_dashboard.services import DisputeService
+        
+        buyer_id = str(request.user.id)
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        status_filter = request.GET.get('status')  # Optional: 'open', 'resolved', 'closed'
+        
+        disputes, total = DisputeService.get_buyer_disputes(buyer_id, page, limit, status_filter)
+        
+        return Response({
+            'success': True,
+            'disputes': disputes,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit,
+                'totalItems': total
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_my_dispute_details(request, dispute_id):
+    """Get buyer's dispute details"""
+    try:
+        from admin_dashboard.services import DisputeService
+        
+        buyer_id = str(request.user.id)
+        dispute_details = DisputeService.get_dispute_details(dispute_id, buyer_id, 'buyer')
+        
+        return Response({
+            'success': True,
+            'dispute': dispute_details
+        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_dispute_comment(request, dispute_id):
+    """Add a comment to dispute (buyer action)"""
+    try:
+        from admin_dashboard.services import DisputeService
+        from authentication.models import User
+        
+        buyer_id = str(request.user.id)
+        message = request.data.get('message', '').strip()
+        
+        if not message:
+            return Response({'success': False, 'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        buyer = User.objects(id=buyer_id).first()
+        buyer_name = buyer.full_name or buyer.username if buyer else 'Buyer'
+        
+        comment = DisputeService.add_dispute_comment(
+            dispute_id=dispute_id,
+            message=message,
+            sender_id=buyer_id,
+            sender_type='buyer',
+            sender_name=buyer_name
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Comment added successfully',
+            'comment': comment
+        }, status=status.HTTP_201_CREATED)
+    except ValueError as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -615,7 +615,7 @@ def get_cashout_details(request, cashout_id):
 # Dispute Management - Additional Endpoints
 @api_view(['GET'])
 def get_dispute_details(request, dispute_id):
-    """Get dispute details"""
+    """Get dispute details (Admin only)"""
     if not check_admin(request):
         return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -633,23 +633,34 @@ def get_dispute_details(request, dispute_id):
 
 @api_view(['POST'])
 def add_dispute_message(request, dispute_id):
-    """Add dispute message"""
+    """Add dispute comment/message (Admin only)"""
     if not check_admin(request):
         return Response({'success': False, 'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        message = request.data.get('message')
-        message_type = request.data.get('type', 'admin_note')
+        from authentication.models import User
+        
+        message = request.data.get('message', '').strip()
         admin_id = str(request.user.id)
         
         if not message:
             return Response({'success': False, 'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        dispute_message = DisputeService.add_dispute_message(dispute_id, message, message_type, admin_id)
+        admin = User.objects(id=admin_id).first()
+        admin_name = admin.full_name or admin.username if admin else 'Admin'
+        
+        comment = DisputeService.add_dispute_comment(
+            dispute_id=dispute_id,
+            message=message,
+            sender_id=admin_id,
+            sender_type='admin',
+            sender_name=admin_name
+        )
+        
         return Response({
             'success': True,
-            'message': 'Message added successfully',
-            'dispute_message': dispute_message
+            'message': 'Comment added successfully. Buyer will be notified via email.',
+            'comment': comment
         }, status=status.HTTP_201_CREATED)
     except ValueError as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

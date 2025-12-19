@@ -49,6 +49,15 @@ class CashoutRequest(Document):
     }
 
 
+class DisputeMessage(EmbeddedDocument):
+    """Dispute message/comment model"""
+    message = StringField(required=True)
+    sender_type = StringField(choices=['buyer', 'admin'], required=True)
+    sender_id = StringField(required=True)
+    sender_name = StringField()
+    created_at = DateTimeField(default=datetime.utcnow)
+
+
 class Dispute(Document):
     """Dispute model"""
     case_number = StringField(required=True, unique=True)
@@ -57,18 +66,20 @@ class Dispute(Document):
     buyer_name = StringField()
     seller_id = ReferenceField(User, required=True)
     seller_name = StringField()
+    order_id = ReferenceField(Order, required=True)
     item_id = ReferenceField(Product, required=True)
     item_title = StringField()
     description = StringField()
     status = StringField(choices=['open', 'resolved', 'closed'], default='open')
     admin_notes = StringField()
     resolution = StringField()
+    messages = ListField(EmbeddedDocumentField(DisputeMessage), default=list)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     
     meta = {
         'collection': 'disputes',
-        'indexes': ['case_number', 'status', 'created_at']
+        'indexes': ['case_number', 'status', 'created_at', 'buyer_id', 'order_id']
     }
 
 
