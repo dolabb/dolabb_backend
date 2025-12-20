@@ -877,6 +877,8 @@ class DisputeService:
     @staticmethod
     def get_disputes(page=1, limit=20, status_filter=None):
         """Get disputes"""
+        from products.models import Order
+        
         query = Dispute.objects()
         
         if status_filter:
@@ -888,6 +890,13 @@ class DisputeService:
         
         disputes_list = []
         for dispute in disputes:
+            # Get order to fetch order_number
+            order = None
+            order_number = ''
+            if dispute.order_id:
+                order = Order.objects(id=dispute.order_id.id).first()
+                order_number = order.order_number if order else ''
+            
             disputes_list.append({
                 '_id': str(dispute.id),
                 'caseNumber': dispute.case_number,
@@ -897,6 +906,7 @@ class DisputeService:
                 'sellerId': str(dispute.seller_id.id),
                 'SellerName': dispute.seller_name,
                 'orderId': str(dispute.order_id.id) if dispute.order_id else '',
+                'orderNumber': order_number,
                 'itemId': str(dispute.item_id.id),
                 'itemTitle': dispute.item_title,
                 'description': dispute.description,
@@ -991,17 +1001,28 @@ class DisputeService:
         product = Product.objects(id=dispute.item_id.id).first()
         order = Order.objects(id=dispute.order_id.id).first() if dispute.order_id else None
         
-        # Format messages
+        # Get order information for messages
+        order_id = str(order.id) if order else ''
+        order_number = order.order_number if order else ''
+        
+        # Format messages (includes both buyer and admin comments)
         messages = []
         if dispute.messages:
-            for msg in dispute.messages:
-                messages.append({
+            # Sort messages by creation date to ensure chronological order
+            sorted_messages = sorted(dispute.messages, key=lambda x: x.created_at)
+            for msg in sorted_messages:
+                message_data = {
                     'message': msg.message,
                     'senderType': msg.sender_type,
                     'senderId': msg.sender_id,
                     'senderName': msg.sender_name,
                     'createdAt': msg.created_at.isoformat()
-                })
+                }
+                # Include order information for all messages when viewed by admin
+                if not user_type or user_type != 'buyer':  # Admin view
+                    message_data['orderId'] = order_id
+                    message_data['orderNumber'] = order_number
+                messages.append(message_data)
         
         # Build timeline
         timeline = [
@@ -1119,7 +1140,17 @@ class DisputeService:
                 import logging
                 logging.error(f"Error sending dispute reply email notification: {str(e)}")
         
-        return {
+        # Get order information if available (especially for admin comments)
+        order_id = ''
+        order_number = ''
+        if dispute.order_id:
+            from products.models import Order
+            order = Order.objects(id=dispute.order_id.id).first()
+            if order:
+                order_id = str(order.id)
+                order_number = order.order_number
+        
+        comment_response = {
             'id': str(dispute_message.id) if hasattr(dispute_message, 'id') else 'temp_id',
             'message': dispute_message.message,
             'senderType': dispute_message.sender_type,
@@ -1127,6 +1158,13 @@ class DisputeService:
             'senderName': dispute_message.sender_name,
             'createdAt': dispute_message.created_at.isoformat()
         }
+        
+        # Include order information for admin comments
+        if sender_type == 'admin':
+            comment_response['orderId'] = order_id
+            comment_response['orderNumber'] = order_number
+        
+        return comment_response
     
     @staticmethod
     def add_dispute_message(dispute_id, message, message_type, admin_id):
