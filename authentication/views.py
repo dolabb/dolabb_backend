@@ -331,6 +331,106 @@ def user_reset_password(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
+def get_user_profile_by_id(request, user_id):
+    """Get user profile by user ID (public endpoint)"""
+    try:
+        from bson import ObjectId
+        from products.services import ReviewService
+        
+        # Convert user_id to ObjectId if needed
+        try:
+            if isinstance(user_id, str):
+                user_obj_id = ObjectId(user_id)
+            else:
+                user_obj_id = user_id
+        except (Exception, ValueError):
+            return Response({'success': False, 'error': 'Invalid user ID format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = User.objects(id=user_obj_id).first()
+        if not user:
+            return Response({'success': False, 'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Helper function to safely get date
+        def get_date_safe(obj, *attrs):
+            for attr in attrs:
+                val = getattr(obj, attr, None)
+                if val:
+                    try:
+                        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+                    except:
+                        return str(val)
+            return ''
+        
+        # Helper function to safely get attribute
+        def safe_get(obj, attr, default=''):
+            try:
+                val = getattr(obj, attr, default)
+                return val if val is not None else default
+            except:
+                return default
+        
+        # Helper function to normalize profile image URL
+        def normalize_image_url(url):
+            """Normalize image URL to ensure it's accessible"""
+            if not url or url == '':
+                return ''
+            # If URL is already absolute, return as is
+            if url.startswith('http://') or url.startswith('https://'):
+                return url
+            # If URL is relative, make it absolute using current request
+            if url.startswith('/'):
+                return request.build_absolute_uri(url)
+            # If URL doesn't start with /, add /media/ prefix if it's a media file
+            if 'uploads' in url or 'profiles' in url:
+                return request.build_absolute_uri(f'/media/{url}')
+            return url
+        
+        user_data = {
+            'id': str(user.id),
+            'username': safe_get(user, 'username'),
+            'email': safe_get(user, 'email'),
+            'phone': safe_get(user, 'phone'),
+            'full_name': safe_get(user, 'full_name'),
+            'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
+            'bio': safe_get(user, 'bio') or '',
+            'location': safe_get(user, 'location') or '',
+            'role': safe_get(user, 'role', 'buyer'),
+            'joined_date': get_date_safe(user, 'join_date', 'created_at'),
+        }
+        
+        # Add seller rating and review count if user is a seller
+        if safe_get(user, 'role', 'buyer') == 'seller':
+            try:
+                rating_stats = ReviewService.get_seller_rating_stats(str(user.id))
+                user_data['rating'] = {
+                    'averageRating': rating_stats['average_rating'],
+                    'totalReviews': rating_stats['total_reviews'],
+                    'ratingDistribution': rating_stats['rating_distribution']
+                }
+            except Exception:
+                # If rating service fails, set defaults
+                user_data['rating'] = {
+                    'averageRating': 0.0,
+                    'totalReviews': 0,
+                    'ratingDistribution': {'5': 0, '4': 0, '3': 0, '2': 0, '1': 0}
+                }
+        
+        return Response({
+            'success': True,
+            'user': user_data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import traceback
+        from django.conf import settings
+        return Response({
+            'success': False, 
+            'error': f'Server error: {str(e)}',
+            'traceback': traceback.format_exc() if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
 def get_profile(request):
     """Get user profile"""
     try:

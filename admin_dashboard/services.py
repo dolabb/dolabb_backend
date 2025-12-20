@@ -956,6 +956,8 @@ class DisputeService:
     @staticmethod
     def get_buyer_disputes(buyer_id, page=1, limit=20, status_filter=None):
         """Get disputes for a specific buyer"""
+        from products.models import Order
+        
         query = Dispute.objects(buyer_id=buyer_id)
         
         if status_filter:
@@ -967,6 +969,13 @@ class DisputeService:
         
         disputes_list = []
         for dispute in disputes:
+            # Get order to fetch order_number
+            order = None
+            order_number = ''
+            if dispute.order_id:
+                order = Order.objects(id=dispute.order_id.id).first()
+                order_number = order.order_number if order else ''
+            
             disputes_list.append({
                 '_id': str(dispute.id),
                 'caseNumber': dispute.case_number,
@@ -974,6 +983,7 @@ class DisputeService:
                 'buyerName': dispute.buyer_name,
                 'sellerName': dispute.seller_name,
                 'orderId': str(dispute.order_id.id) if dispute.order_id else '',
+                'orderNumber': order_number,
                 'itemTitle': dispute.item_title,
                 'description': dispute.description,
                 'status': dispute.status,

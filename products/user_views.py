@@ -2,11 +2,11 @@
 User-specific product views
 """
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from products.services import ProductService, OfferService, OrderService, ReviewService
-from products.models import Product, Order, Offer, Review
+from products.models import Product, Order, Offer, Review, SavedProduct
 from authentication.models import User
 
 
@@ -513,9 +513,9 @@ def get_product_reviews(request, product_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_seller_rating(request, seller_id):
-    """Get seller rating statistics"""
+    """Get seller rating statistics (public endpoint)"""
     try:
         stats = ReviewService.get_seller_rating_stats(seller_id)
         
@@ -528,7 +528,7 @@ def get_seller_rating(request, seller_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_seller_reviews(request, seller_id):
     """Get reviews/comments for a seller"""
     try:
@@ -565,6 +565,96 @@ def get_seller_reviews(request, seller_id):
         return Response({
             'success': True,
             'reviews': reviews_list,
+            'pagination': {
+                'currentPage': page,
+                'totalPages': (total + limit - 1) // limit if total > 0 else 0,
+                'totalItems': total
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_products_by_seller(request, seller_id):
+    """Get products by a specific seller ID (public endpoint)"""
+    try:
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 20))
+        status_filter = request.GET.get('status')  # Optional status filter
+        
+        products, total = ProductService.get_seller_products(seller_id, status_filter, page, limit)
+        
+        # Get user_id for checking saved status (if authenticated)
+        user_id = None
+        if hasattr(request.user, 'id') and request.user.id:
+            try:
+                user_id = str(request.user.id)
+            except:
+                user_id = None
+        
+        products_list = []
+        for product in products:
+            # Check if product is saved by the current user (if authenticated)
+            is_saved = False
+            if user_id and user_id != 'None' and user_id.strip():
+                try:
+                    from bson import ObjectId
+                    user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                    saved = SavedProduct.objects(user_id=user_obj_id, product_id=product.id).first()
+                    is_saved = saved is not None
+                except:
+                    is_saved = False
+            
+            # Get seller info
+            seller = None
+            seller_rating = 0
+            total_sales = 0
+            if product.seller_id:
+                try:
+                    seller = User.objects(id=product.seller_id.id).first()
+                    if seller:
+                        try:
+                            rating_stats = ReviewService.get_seller_rating_stats(str(seller.id))
+                            seller_rating = rating_stats.get('average_rating', 0)
+                        except:
+                            seller_rating = 0
+                except:
+                    seller = None
+            
+            products_list.append({
+                'id': str(product.id),
+                'title': product.title,
+                'description': product.description or '',
+                'price': product.price,
+                'originalPrice': product.original_price or product.price,
+                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
+                'images': product.images or [],
+                'category': product.category,
+                'subcategory': product.subcategory or '',
+                'brand': product.brand or '',
+                'size': product.size or '',
+                'color': product.color or '',
+                'condition': product.condition,
+                'status': product.status,
+                'approved': product.approved,
+                'quantity': product.quantity,
+                'isSaved': is_saved,
+                'seller': {
+                    'id': str(seller.id) if seller else '',
+                    'username': seller.username if seller else '',
+                    'fullName': seller.full_name if seller else '',
+                    'profileImage': seller.profile_image if seller else '',
+                    'rating': seller_rating
+                },
+                'createdAt': product.created_at.isoformat() if product.created_at else None,
+                'updatedAt': product.updated_at.isoformat() if product.updated_at else None
+            })
+        
+        return Response({
+            'success': True,
+            'products': products_list,
             'pagination': {
                 'currentPage': page,
                 'totalPages': (total + limit - 1) // limit if total > 0 else 0,
