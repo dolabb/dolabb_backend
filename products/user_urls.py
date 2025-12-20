@@ -20,10 +20,10 @@ urlpatterns = [
     path('reviews/product/<str:product_id>/', get_product_reviews, name='get_product_reviews'),
     path('reviews/seller/<str:seller_id>/rating/', get_seller_rating, name='get_seller_rating'),
     path('reviews/seller/<str:seller_id>/', get_seller_reviews, name='get_seller_reviews'),
-    # Dispute/Report endpoints
+    # Dispute/Report endpoints - Order matters: more specific routes first
     path('disputes/create/', create_dispute, name='create_dispute'),
-    path('disputes/', get_my_disputes, name='get_my_disputes'),
-    path('disputes/<str:dispute_id>/', get_my_dispute_details, name='get_my_dispute_details'),
     path('disputes/<str:dispute_id>/comments/', add_dispute_comment, name='add_dispute_comment'),
+    path('disputes/<str:dispute_id>/', get_my_dispute_details, name='get_my_dispute_details'),
+    path('disputes/', get_my_disputes, name='get_my_disputes'),
 ]
 
