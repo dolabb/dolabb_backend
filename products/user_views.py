@@ -1,6 +1,7 @@
 """
 User-specific product views
 """
+from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -58,8 +59,12 @@ def get_user_orders(request):
         status_filter = request.GET.get('status')
         # Allow filtering by payment status; default to completed for payments endpoint
         payment_status_filter = request.GET.get('paymentStatus')
-        if not payment_status_filter and 'payments' in request.path:
+        
+        # Check if this is the payments endpoint by checking the full path
+        is_payments_endpoint = 'payments' in request.path or 'payments' in request.get_full_path()
+        if not payment_status_filter and is_payments_endpoint:
             payment_status_filter = 'completed'
+        
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 20))
         
@@ -126,16 +131,28 @@ def get_user_orders(request):
             
             orders_list.append(order_data)
         
+        # Determine response key based on endpoint and user type
+        if is_payments_endpoint:
+            response_key = 'payments' if user_type == 'seller' else 'orders'
+        else:
+            response_key = 'orders'
+        
         return Response({
-            'payments' if user_type == 'seller' else 'orders': orders_list,
+            'success': True,
+            response_key: orders_list,
             'pagination': {
                 'currentPage': page,
-                'totalPages': (total + limit - 1) // limit,
+                'totalPages': (total + limit - 1) // limit if total > 0 else 0,
                 'totalItems': total
             }
         }, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        import traceback
+        return Response({
+            'success': False, 
+            'error': str(e),
+            'traceback': traceback.format_exc() if hasattr(settings, 'DEBUG') and settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
