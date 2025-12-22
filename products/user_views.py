@@ -95,6 +95,13 @@ def get_user_orders(request):
                     'profileImage': buyer.profile_image if buyer else ''
                 }
             
+            # Determine purchase type: 'buy_now' (direct purchase) or 'offer' (purchased after offer)
+            # Check if order has offer_id set (works for both old and new orders)
+            # For old orders: offer_id will be None or not exist if it was a buy_now purchase
+            # For new orders: offer_id will be set if purchased via offer, None if buy_now
+            has_offer_id = hasattr(order, 'offer_id') and order.offer_id is not None
+            purchase_type = 'offer' if has_offer_id else 'buy_now'
+            
             order_data = {
                 'id': str(order.id),
                 'orderNumber': order.order_number,
@@ -107,6 +114,9 @@ def get_user_orders(request):
                 'orderDate': order.created_at.isoformat(),
                 'status': order.status,
                 'paymentStatus': order.payment_status,  # 'pending', 'completed', 'failed'
+                'purchaseType': purchase_type,  # 'buy_now' or 'offer' - indicates how the product was purchased
+                'originalPrice': float(order.price) if order.price else 0.0,
+                'offerPrice': float(order.offer_price) if hasattr(order, 'offer_price') and order.offer_price else None,  # Only present if purchased via offer
                 'totalPrice': order.total_price,
                 'shippingAddress': {
                     'fullName': order.full_name,
