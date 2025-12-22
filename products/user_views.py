@@ -125,7 +125,31 @@ def get_user_orders(request):
             dispute_status = None
             dispute_data = None
             if user_type == 'buyer':
-                dispute = Dispute.objects(order_id=order.id, buyer_id=user_id).first()
+                # Query dispute by order_id and buyer_id
+                # Try multiple query methods to handle different ReferenceField formats
+                dispute = None
+                
+                # Method 1: Query using Order object reference (as stored in Dispute model)
+                dispute = Dispute.objects(order_id=order, buyer_id=user_id).first()
+                
+                # Method 2: If not found, query all buyer disputes and filter by order
+                if not dispute:
+                    buyer_disputes = Dispute.objects(buyer_id=user_id)
+                    for d in buyer_disputes:
+                        # Check if dispute's order_id matches current order
+                        if d.order_id and (str(d.order_id.id) == str(order.id) or d.order_id.id == order.id):
+                            dispute = d
+                            break
+                
+                # Method 3: If still not found, try with order.id directly
+                if not dispute:
+                    try:
+                        from bson import ObjectId
+                        order_obj_id = ObjectId(str(order.id)) if not isinstance(order.id, ObjectId) else order.id
+                        dispute = Dispute.objects(order_id=order_obj_id, buyer_id=user_id).first()
+                    except Exception:
+                        pass
+                
                 if dispute:
                     dispute_status = dispute.status  # 'open', 'resolved', 'closed'
                     dispute_data = {
