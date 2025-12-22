@@ -56,10 +56,21 @@ def get_user_orders(request):
             user_type = 'seller'
         
         status_filter = request.GET.get('status')
+        # Allow filtering by payment status; default to completed for payments endpoint
+        payment_status_filter = request.GET.get('paymentStatus')
+        if not payment_status_filter and 'payments' in request.path:
+            payment_status_filter = 'completed'
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 20))
         
-        orders, total = OrderService.get_user_orders(user_id, user_type, status_filter, page, limit)
+        orders, total = OrderService.get_user_orders(
+            user_id=user_id,
+            user_type=user_type,
+            status=status_filter,
+            payment_status=payment_status_filter,
+            page=page,
+            limit=limit
+        )
         
         orders_list = []
         for order in orders:

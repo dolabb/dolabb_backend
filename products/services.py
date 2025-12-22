@@ -1502,10 +1502,31 @@ class OfferService:
         offer.updated_at = datetime.utcnow()
         offer.save()
         
+        # Update product quantity - deduct 1 when offer is accepted
+        if offer.product_id:
+            product = Product.objects(id=offer.product_id.id).first()
+            if product:
+                # Deduct 1 from quantity
+                if product.quantity is None or product.quantity <= 0:
+                    product.quantity = 0
+                else:
+                    product.quantity -= 1
+                
+                # Mark as sold if quantity reaches 0
+                if product.quantity <= 0:
+                    product.status = 'sold'
+                
+                product.updated_at = datetime.utcnow()
+                product.save()
+        
         # Send notification to buyer - offer accepted
         try:
             from notifications.notification_helper import NotificationHelper
-            NotificationHelper.send_offer_accepted(str(offer.buyer_id.id))
+            NotificationHelper.send_offer_accepted(
+                str(offer.buyer_id.id),
+                offer_id=str(offer.id),
+                product_id=str(offer.product_id.id)
+            )
         except Exception as e:
             import logging
             logging.error(f"Error sending offer accepted notification: {str(e)}")
@@ -1846,11 +1867,15 @@ class OrderService:
             platform_fee = OrderService.calculate_platform_fee(base_amount)
             
             # Calculate affiliate commission (using affiliate's individual rate or default)
+            # IMPORTANT: Affiliate commission is calculated from platform fee, NOT from order fee
+            # The commission comes from the platform's revenue, not from the seller's payout
             affiliate_commission = 0.0
             if affiliate and affiliate_code:
                 affiliate_commission = OrderService.calculate_affiliate_commission(platform_fee, affiliate)
             
             # Calculate seller payout (subtotal - platform fee)
+            # NOTE: Affiliate commission is NOT deducted from seller payout
+            # Seller pays only the platform fee, and affiliate commission comes from platform fee
             seller_payout = subtotal - platform_fee
             
             # Total price includes everything (buyer pays: base + shipping + platform fee)
@@ -2124,8 +2149,8 @@ class OrderService:
             logging.error(f"Failed to update affiliate earnings: {str(e)}")
     
     @staticmethod
-    def get_user_orders(user_id, user_type='buyer', status=None, page=1, limit=20):
-        """Get orders for user"""
+    def get_user_orders(user_id, user_type='buyer', status=None, payment_status=None, page=1, limit=20):
+        """Get orders for user with optional status and payment_status filters"""
         if user_type == 'buyer':
             query = Order.objects(buyer_id=user_id)
         else:
@@ -2133,6 +2158,10 @@ class OrderService:
         
         if status:
             query = query.filter(status=status)
+        
+        # Allow filtering by payment status (e.g., completed, pending)
+        if payment_status:
+            query = query.filter(payment_status=payment_status)
         
         total = query.count()
         skip = (page - 1) * limit
