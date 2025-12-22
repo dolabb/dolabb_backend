@@ -890,12 +890,21 @@ class DisputeService:
         
         disputes_list = []
         for dispute in disputes:
-            # Get order to fetch order_number
+            # Get order to fetch order_number - handle broken references safely
             order = None
+            order_id = ''
             order_number = ''
             if dispute.order_id:
-                order = Order.objects(id=dispute.order_id.id).first()
-                order_number = order.order_number if order else ''
+                try:
+                    order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
+                    order = Order.objects(id=order_obj_id).first()
+                    if order:
+                        order_id = str(order.id)
+                        order_number = order.order_number if hasattr(order, 'order_number') else ''
+                except (AttributeError, Exception):
+                    # Order reference is broken or order doesn't exist
+                    order_id = ''
+                    order_number = ''
             
             disputes_list.append({
                 '_id': str(dispute.id),
@@ -905,7 +914,7 @@ class DisputeService:
                 'buyerName': dispute.buyer_name,
                 'sellerId': str(dispute.seller_id.id),
                 'SellerName': dispute.seller_name,
-                'orderId': str(dispute.order_id.id) if dispute.order_id else '',
+                'orderId': order_id,
                 'orderNumber': order_number,
                 'itemId': str(dispute.item_id.id),
                 'itemTitle': dispute.item_title,
@@ -969,12 +978,21 @@ class DisputeService:
         
         disputes_list = []
         for dispute in disputes:
-            # Get order to fetch order_number
+            # Get order to fetch order_number - handle broken references safely
             order = None
+            order_id = ''
             order_number = ''
             if dispute.order_id:
-                order = Order.objects(id=dispute.order_id.id).first()
-                order_number = order.order_number if order else ''
+                try:
+                    order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
+                    order = Order.objects(id=order_obj_id).first()
+                    if order:
+                        order_id = str(order.id)
+                        order_number = order.order_number if hasattr(order, 'order_number') else ''
+                except (AttributeError, Exception):
+                    # Order reference is broken or order doesn't exist
+                    order_id = ''
+                    order_number = ''
             
             disputes_list.append({
                 '_id': str(dispute.id),
@@ -982,7 +1000,7 @@ class DisputeService:
                 'type': dispute.dispute_type,
                 'buyerName': dispute.buyer_name,
                 'sellerName': dispute.seller_name,
-                'orderId': str(dispute.order_id.id) if dispute.order_id else '',
+                'orderId': order_id,
                 'orderNumber': order_number,
                 'itemTitle': dispute.item_title,
                 'description': dispute.description,
@@ -1009,11 +1027,30 @@ class DisputeService:
         buyer = User.objects(id=dispute.buyer_id.id).first()
         seller = User.objects(id=dispute.seller_id.id).first()
         product = Product.objects(id=dispute.item_id.id).first()
-        order = Order.objects(id=dispute.order_id.id).first() if dispute.order_id else None
         
-        # Get order information for messages
-        order_id = str(order.id) if order else ''
-        order_number = order.order_number if order else ''
+        # Safely get order information - handle cases where order_id is None or order doesn't exist
+        order = None
+        order_id = ''
+        order_number = ''
+        if dispute.order_id:
+            try:
+                # Try to get the order - handle both ReferenceField and direct ID access
+                order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
+                order = Order.objects(id=order_obj_id).first()
+                if order:
+                    order_id = str(order.id)
+                    order_number = order.order_number if hasattr(order, 'order_number') else ''
+                else:
+                    # Order reference exists but order not found in database
+                    import logging
+                    logging.warning(f"Dispute {dispute_id} has order_id reference but order {order_obj_id} not found in database")
+            except (AttributeError, Exception) as e:
+                # Order reference is broken or order doesn't exist
+                import logging
+                logging.warning(f"Error fetching order for dispute {dispute_id}: {str(e)}")
+                order = None
+                order_id = ''
+                order_number = ''
         
         # Format messages (includes both buyer and admin comments)
         messages = []
@@ -1064,8 +1101,8 @@ class DisputeService:
                 'email': seller.email if seller else ''
             },
             'order': {
-                'id': str(dispute.order_id.id) if dispute.order_id else '',
-                'orderNumber': order.order_number if order else ''
+                'id': order_id,
+                'orderNumber': order_number
             },
             'item': {
                 'id': str(dispute.item_id.id),
@@ -1151,14 +1188,28 @@ class DisputeService:
                 logging.error(f"Error sending dispute reply email notification: {str(e)}")
         
         # Get order information if available (especially for admin comments)
+        # Handle cases where order_id is None, broken reference, or order doesn't exist
         order_id = ''
         order_number = ''
         if dispute.order_id:
-            from products.models import Order
-            order = Order.objects(id=dispute.order_id.id).first()
-            if order:
-                order_id = str(order.id)
-                order_number = order.order_number
+            try:
+                from products.models import Order
+                # Try to get the order - handle both ReferenceField and direct ID access
+                order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
+                order = Order.objects(id=order_obj_id).first()
+                if order:
+                    order_id = str(order.id)
+                    order_number = order.order_number if hasattr(order, 'order_number') else ''
+                else:
+                    # Order reference exists but order not found in database
+                    import logging
+                    logging.warning(f"Dispute {dispute_id} has order_id reference but order {order_obj_id} not found when adding comment")
+            except (AttributeError, Exception) as e:
+                # Order reference is broken or order doesn't exist - use empty values
+                import logging
+                logging.warning(f"Error fetching order for dispute {dispute_id} when adding comment: {str(e)}")
+                order_id = ''
+                order_number = ''
         
         comment_response = {
             'id': str(dispute_message.id) if hasattr(dispute_message, 'id') else 'temp_id',
