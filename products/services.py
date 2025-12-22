@@ -2217,7 +2217,19 @@ class ReviewService:
     
     @staticmethod
     def create_review(order_id, buyer_id, rating, comment):
-        """Create a review for an order"""
+        """
+        Create a review for an order
+        
+        Security checks to prevent spam and fake reviews:
+        1. Order must exist and belong to the buyer (prevents unauthorized reviews)
+        2. Order must have payment_status='completed' (only paid orders can be reviewed)
+        3. Order must be delivered (only delivered orders can be reviewed)
+        4. Order must not already be marked as reviewed (prevents duplicate submissions)
+        5. Review must not already exist in database (database-level duplicate prevention)
+        
+        This ensures each buyer can only submit ONE review per purchase (order),
+        preventing spam and ensuring review authenticity.
+        """
         from products.models import Review, Order, Product, User
         
         # Verify order exists and belongs to buyer
@@ -2225,14 +2237,23 @@ class ReviewService:
         if not order:
             raise ValueError("Order not found or does not belong to buyer")
         
+        # Security: Only allow reviews for completed payments
+        if order.payment_status != 'completed':
+            raise ValueError("Can only review orders with completed payment")
+        
         # Check if order is delivered
         if order.status != 'delivered':
             raise ValueError("Can only review delivered orders")
         
-        # Check if review already exists
+        # Security check 1: Check if order is already marked as reviewed (first check)
+        if hasattr(order, 'review_submitted') and order.review_submitted:
+            raise ValueError("Review already submitted for this order. You can only submit one review per purchase.")
+        
+        # Security check 2: Check if review already exists for this order (database-level check)
+        # This prevents duplicate reviews and ensures one review per order per buyer
         existing_review = Review.objects(order_id=order_id, buyer_id=buyer_id).first()
         if existing_review:
-            raise ValueError("Review already submitted for this order")
+            raise ValueError("Review already submitted for this order. Each buyer can only submit one review per purchase to prevent spam and ensure review authenticity.")
         
         # Get product and seller info
         product = Product.objects(id=order.product_id.id).first()

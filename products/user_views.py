@@ -9,6 +9,7 @@ from rest_framework import status
 from products.services import ProductService, OfferService, OrderService, ReviewService
 from products.models import Product, Order, Offer, Review, SavedProduct
 from authentication.models import User
+from admin_dashboard.models import Dispute
 
 
 @api_view(['GET'])
@@ -102,6 +103,41 @@ def get_user_orders(request):
             has_offer_id = hasattr(order, 'offer_id') and order.offer_id is not None
             purchase_type = 'offer' if has_offer_id else 'buy_now'
             
+            # Check if review exists for this order (for buyers)
+            review_status = None
+            review_data = None
+            if user_type == 'buyer':
+                review = Review.objects(order_id=order.id, buyer_id=user_id).first()
+                if review:
+                    review_status = 'submitted'
+                    review_data = {
+                        'id': str(review.id),
+                        'rating': review.rating,
+                        'comment': review.comment,
+                        'createdAt': review.created_at.isoformat() if review.created_at else None
+                    }
+                elif hasattr(order, 'review_submitted') and order.review_submitted:
+                    review_status = 'submitted'  # Review exists but might not be in Review collection
+                else:
+                    review_status = 'not_submitted'
+            
+            # Check if dispute exists for this order (for buyers)
+            dispute_status = None
+            dispute_data = None
+            if user_type == 'buyer':
+                dispute = Dispute.objects(order_id=order.id, buyer_id=user_id).first()
+                if dispute:
+                    dispute_status = dispute.status  # 'open', 'resolved', 'closed'
+                    dispute_data = {
+                        'id': str(dispute.id),
+                        'caseNumber': dispute.case_number,
+                        'type': dispute.dispute_type,
+                        'status': dispute.status,
+                        'createdAt': dispute.created_at.isoformat() if dispute.created_at else None
+                    }
+                else:
+                    dispute_status = 'none'
+            
             order_data = {
                 'id': str(order.id),
                 'orderNumber': order.order_number,
@@ -128,7 +164,11 @@ def get_user_orders(request):
                     'additionalInfo': order.additional_info
                 },
                 'trackingNumber': order.tracking_number or '',
-                'reviewSubmitted': order.review_submitted if hasattr(order, 'review_submitted') else False
+                'reviewSubmitted': order.review_submitted if hasattr(order, 'review_submitted') else False,
+                'reviewStatus': review_status,  # 'submitted', 'not_submitted', or None (for sellers)
+                'review': review_data,  # Review details if exists, None otherwise
+                'disputeStatus': dispute_status,  # 'open', 'resolved', 'closed', 'none', or None (for sellers)
+                'dispute': dispute_data  # Dispute details if exists, None otherwise
             }
             
             # Add seller payout information for sellers
