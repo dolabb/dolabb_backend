@@ -29,7 +29,7 @@ EMAIL_CONFIG = {
 }
 
 
-def get_email_base_template(title, content, user_name=None, footer_text=None, language='en'):
+def get_email_base_template(title, content, user_name=None, footer_text=None, language='en', action_button=None):
     """
     Generate a professional HTML email template
     
@@ -39,6 +39,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
         user_name: Optional user name for personalized greeting
         footer_text: Optional custom footer text
         language: Language code ('en' or 'ar') for RTL support
+        action_button: Optional dict with 'text', 'url', and optionally 'text_ar' for action button
     
     Returns:
         Complete HTML email template
@@ -112,6 +113,29 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
     # Font family for Arabic support
     font_family = "'Segoe UI', 'Tahoma', 'Arial', sans-serif" if is_rtl else "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     
+    # Generate action button HTML if provided
+    action_button_html = ""
+    if action_button and action_button.get('url'):
+        button_text = action_button.get('text_ar' if is_rtl else 'text', action_button.get('text', 'Click Here'))
+        button_url = action_button.get('url', '#')
+        # Escape button text for HTML
+        button_text_encoded = html.escape(button_text)
+        action_button_html = f"""
+                        <tr>
+                            <td align="center" style="padding: 0 50px 30px; background-color: #ffffff;">
+                                <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px; background-color: #111827;">
+                                            <a href="{button_url}" target="_blank" style="display: inline-block; padding: 14px 32px; font-family: {font_family}; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px; background-color: #111827; text-align: center;">
+                                                {button_text_encoded}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+        """
+    
     # Escape title for HTML (but keep company name as-is to preserve Arabic characters)
     title_encoded = html.escape(title)
     
@@ -158,6 +182,9 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
                             </td>
                         </tr>
                         
+                        <!-- Action Button Section -->
+                        {action_button_html}
+                        
                         <!-- Social Icons -->
                         {social_icons}
                         
@@ -188,7 +215,7 @@ def get_email_base_template(title, content, user_name=None, footer_text=None, la
 
 
 def render_notification_email(notification_title, notification_message, notification_type='info', 
-                             user_name=None, custom_footer=None, language='en'):
+                             user_name=None, custom_footer=None, language='en', action_button=None):
     """
     Render a notification email with professional styling
     
@@ -199,6 +226,7 @@ def render_notification_email(notification_title, notification_message, notifica
         user_name: Optional user name for personalized greeting
         custom_footer: Optional custom footer text
         language: Language code ('en' or 'ar') for RTL support
+        action_button: Optional dict with 'text', 'url', and optionally 'text_ar' for action button
     
     Returns:
         Complete HTML email template
@@ -219,12 +247,13 @@ def render_notification_email(notification_title, notification_message, notifica
         content=notification_message,
         user_name=user_name,
         footer_text=custom_footer,
-        language=language
+        language=language,
+        action_button=action_button
     )
 
 
 def send_notification_email(email, notification_title, notification_message, notification_type='info',
-                           user_name=None, custom_footer=None, language='en'):
+                           user_name=None, custom_footer=None, language='en', action_button=None):
     """
     Send a styled notification email via Resend
     
@@ -236,6 +265,7 @@ def send_notification_email(email, notification_title, notification_message, not
         user_name: Optional user name for personalized greeting
         custom_footer: Optional custom footer text
         language: Language code ('en' or 'ar') for RTL support
+        action_button: Optional dict with 'text', 'url', and optionally 'text_ar' for action button
     
     Returns:
         Resend email response
@@ -254,7 +284,8 @@ def send_notification_email(email, notification_title, notification_message, not
             notification_type=notification_type,
             user_name=user_name,
             custom_footer=custom_footer,
-            language=language
+            language=language,
+            action_button=action_button
         )
         
         # Send via Resend

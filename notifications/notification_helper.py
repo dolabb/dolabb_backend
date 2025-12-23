@@ -15,7 +15,7 @@ class NotificationHelper:
     """Helper class for sending automatic notifications"""
     
     @staticmethod
-    def send_notification_to_user(user_id, category, template_key, user_type='user', extra_message=None):
+    def send_notification_to_user(user_id, category, template_key, user_type='user', extra_message=None, action_button=None):
         """
         Send notification to a specific user
         
@@ -24,6 +24,8 @@ class NotificationHelper:
             category: 'seller', 'buyer', or 'affiliate'
             template_key: Key from templates (e.g., 'item_sold', 'order_confirmation')
             user_type: 'user' or 'affiliate' - determines which model to use
+            extra_message: Optional extra message to append
+            action_button: Optional dict with 'text', 'url', and optionally 'text_ar' for action button
         
         Returns:
             UserNotification object or None if failed
@@ -112,10 +114,11 @@ class NotificationHelper:
                     send_notification_email(
                         email=user.email,
                         notification_title=template['title'],
-                            notification_message=message,
+                        notification_message=message,
                         notification_type=email_notification_type,
                         user_name=user_name,
-                        language=user_language
+                        language=user_language,
+                        action_button=action_button
                     )
             except Exception as e:
                 print(f"Warning: Failed to send email notification: {str(e)}")
@@ -333,10 +336,24 @@ class NotificationHelper:
         )
     
     @staticmethod
-    def send_offer_accepted(buyer_id):
-        """Send offer accepted notification"""
+    def send_offer_accepted(buyer_id, offer_id=None, product_id=None):
+        """Send offer accepted notification with Buy Now button"""
+        # Build checkout URL if offer and product info provided
+        action_button = None
+        if offer_id and product_id:
+            from django.conf import settings
+            # Get frontend URL from settings or use default
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://dolabb.com')
+            checkout_url = f"{frontend_url}/checkout?productId={product_id}&offerId={offer_id}"
+            
+            action_button = {
+                'text': 'Buy Now',
+                'url': checkout_url,
+                'text_ar': 'اشتري الآن'
+            }
+        
         return NotificationHelper.send_notification_to_user(
-            buyer_id, 'buyer', 'offer_accepted'
+            buyer_id, 'buyer', 'offer_accepted', action_button=action_button
         )
     
     @staticmethod

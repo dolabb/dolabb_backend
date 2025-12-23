@@ -986,7 +986,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def accept_counter_offer_async(self, offer_id, buyer_id):
         """Buyer accepts seller's counter offer"""
-        from products.models import Offer
+        from products.models import Offer, Product
         offer = Offer.objects(id=offer_id, buyer_id=buyer_id).first()
         if not offer:
             raise ValueError("Offer not found")
@@ -996,6 +996,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         offer.status = 'accepted'
         offer.updated_at = datetime.utcnow()
         offer.save()
+        
+        # Update product quantity - deduct 1 when offer is accepted
+        if offer.product_id:
+            product = Product.objects(id=offer.product_id.id).first()
+            if product:
+                # Deduct 1 from quantity
+                if product.quantity is None or product.quantity <= 0:
+                    product.quantity = 0
+                else:
+                    product.quantity -= 1
+                
+                # Mark as sold if quantity reaches 0
+                if product.quantity <= 0:
+                    product.status = 'sold'
+                
+                product.updated_at = datetime.utcnow()
+                product.save()
+        
         return offer
 
 

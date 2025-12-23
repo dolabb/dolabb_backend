@@ -23,9 +23,9 @@ urlpatterns = [
     path('verify-otp/', user_verify_otp, name='user_verify_otp'),
     path('forgot-password/', views.user_forgot_password, name='user_forgot_password'),
     path('reset-password/', views.user_reset_password, name='user_reset_password'),
-    path('profile/', views.get_profile, name='get_profile'),
+    path('profile/', views.get_profile, name='get_profile'),  # Handles GET, PATCH, PUT
     path('profile/<str:user_id>/', views.get_user_profile_by_id, name='get_user_profile_by_id'),
-    path('profile/update/', views.update_profile, name='update_profile'),
+    path('profile/update/', views.update_profile, name='update_profile_legacy'),  # Keep for backward compatibility
     path('language/update/', views.update_language, name='update_language'),
     
     # Affiliate auth

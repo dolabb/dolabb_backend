@@ -430,14 +430,16 @@ def get_user_profile_by_id(request, user_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PATCH', 'PUT'])
 def get_profile(request):
-    """Get user profile"""
-    try:
-        user = request.user
-        
-        if not user or not hasattr(user, 'id'):
-            return Response({'success': False, 'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+    """Get or update user profile"""
+    # Handle GET request - return profile
+    if request.method == 'GET':
+        try:
+            user = request.user
+            
+            if not user or not hasattr(user, 'id'):
+                return Response({'success': False, 'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
         
         # Helper function to safely get date
         def get_date_safe(obj, *attrs):
@@ -562,27 +564,188 @@ def get_profile(request):
                 }
             }, status=status.HTTP_200_OK)
         
-        return Response({'success': False, 'error': 'Invalid user type'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'error': 'Invalid user type'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        except AttributeError as e:
+            import traceback
+            from django.conf import settings
+            return Response({
+                'success': False, 
+                'error': f'Attribute error: {str(e)}',
+                'traceback': traceback.format_exc() if settings.DEBUG else None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            import traceback
+            from django.conf import settings
+            return Response({
+                'success': False, 
+                'error': f'Server error: {str(e)}',
+                'traceback': traceback.format_exc() if settings.DEBUG else None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    except AttributeError as e:
-        import traceback
-        from django.conf import settings
+    # Handle PATCH/PUT request - update profile
+    elif request.method in ['PATCH', 'PUT']:
+        try:
+            user = request.user
+            data = request.data
+            
+            if not user or not hasattr(user, 'id'):
+                return Response({'success': False, 'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+            if hasattr(user, 'username'):  # Regular User
+                if 'full_name' in data:
+                    user.full_name = data['full_name']
+                if 'username' in data:
+                    user.username = data['username']
+                if 'bio' in data:
+                    user.bio = data['bio']
+                if 'location' in data:
+                    user.location = data['location']
+                if 'profile_image' in data:
+                    # Process base64 image if needed
+                    processed_image = AuthService.process_profile_image(data['profile_image'], request)
+                    user.profile_image = processed_image if processed_image else data['profile_image']
+                if 'shipping_address' in data:
+                    user.shipping_address = data['shipping_address']
+                if 'shippingAddress' in data:
+                    user.shipping_address = data['shippingAddress']
+                if 'zip_code' in data:
+                    user.zip_code = data['zip_code']
+                if 'zipCode' in data:
+                    user.zip_code = data['zipCode']
+                if 'house_number' in data:
+                    user.house_number = data['house_number']
+                if 'houseNumber' in data:
+                    user.house_number = data['houseNumber']
+                
+                # Role update - allow switching between buyer and seller
+                if 'role' in data:
+                    new_role = data['role'].lower()
+                    if new_role in ['buyer', 'seller']:
+                        user.role = new_role
+                    else:
+                        return Response({
+                            'success': False,
+                            'error': 'Invalid role. Must be "buyer" or "seller"'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Bank/Payment fields (optional)
+                bank_details_updated = False
+                if 'bank_name' in data:
+                    user.bank_name = data['bank_name']
+                    bank_details_updated = True
+                if 'bankName' in data:
+                    user.bank_name = data['bankName']
+                    bank_details_updated = True
+                if 'account_number' in data:
+                    user.account_number = data['account_number']
+                    bank_details_updated = True
+                if 'accountNumber' in data:
+                    user.account_number = data['accountNumber']
+                    bank_details_updated = True
+                if 'iban' in data:
+                    user.iban = data['iban']
+                    bank_details_updated = True
+                if 'IBAN' in data:
+                    user.iban = data['IBAN']
+                    bank_details_updated = True
+                if 'account_holder_name' in data:
+                    user.account_holder_name = data['account_holder_name']
+                    bank_details_updated = True
+                if 'accountHolderName' in data:
+                    user.account_holder_name = data['accountHolderName']
+                    bank_details_updated = True
+                
+                # Language preference
+                if 'language' in data:
+                    language = data['language']
+                    if language in ['en', 'ar']:
+                        user.language = language
+                elif 'preferredLanguage' in data:
+                    language = data['preferredLanguage']
+                    if language in ['en', 'ar']:
+                        user.language = language
+                
+                user.save()
+                
+                # Send notification if bank details were updated
+                if bank_details_updated:
+                    try:
+                        from notifications.notification_helper import NotificationHelper
+                        if user.role == 'seller':
+                            NotificationHelper.send_bank_payment_setup_completed(str(user.id))
+                        else:
+                            NotificationHelper.send_buyer_bank_payment_setup_completed(str(user.id))
+                    except Exception as e:
+                        print(f"Error sending bank setup notification: {str(e)}")
+                
+                # Helper functions for response
+                def get_date_safe(obj, *attrs):
+                    for attr in attrs:
+                        val = getattr(obj, attr, None)
+                        if val:
+                            try:
+                                return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+                            except:
+                                return str(val)
+                    return ''
+                
+                def safe_get(obj, attr, default=''):
+                    try:
+                        val = getattr(obj, attr, default)
+                        return val if val is not None else default
+                    except:
+                        return default
+                
+                def normalize_image_url(url):
+                    if not url or url == '':
+                        return ''
+                    if url.startswith('http://') or url.startswith('https://'):
+                        return url
+                    if url.startswith('/'):
+                        return request.build_absolute_uri(url)
+                    if 'uploads' in url or 'profiles' in url:
+                        return request.build_absolute_uri(f'/media/{url}')
+                    return url
+                
+                serializer = UserProfileSerializer({
+                    'id': str(user.id),
+                    'username': user.username,
+                    'email': user.email,
+                    'phone': user.phone,
+                    'full_name': user.full_name,
+                    'profile_image': normalize_image_url(user.profile_image or ''),
+                    'bio': user.bio or '',
+                    'location': user.location or '',
+                    'shipping_address': user.shipping_address or '',
+                    'zip_code': user.zip_code or '',
+                    'house_number': user.house_number or '',
+                    'joined_date': user.join_date,
+                    'role': user.role,
+                    'language': getattr(user, 'language', 'en')
+                })
+                return Response({'success': True, 'user': serializer.data}, status=status.HTTP_200_OK)
+            
+            return Response({'success': False, 'error': 'Invalid user type'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        except Exception as e:
+            import traceback
+            from django.conf import settings
+            return Response({
+                'success': False,
+                'error': f'Server error: {str(e)}',
+                'traceback': traceback.format_exc() if settings.DEBUG else None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # If method is not GET, PATCH, or PUT
+    else:
         return Response({
-            'success': False, 
-            'error': f'Attribute error: {str(e)}',
-            'traceback': traceback.format_exc() if settings.DEBUG else None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    except Exception as e:
-        import traceback
-        from django.conf import settings
-        return Response({
-            'success': False, 
-            'error': f'Server error: {str(e)}',
-            'traceback': traceback.format_exc() if settings.DEBUG else None
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            'success': False,
+            'error': 'Method not allowed'
+        }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
-@api_view(['PUT'])
+@api_view(['PUT', 'PATCH'])
 def update_profile(request):
     """Update user profile"""
     user = request.user
@@ -613,6 +776,17 @@ def update_profile(request):
             user.house_number = data['house_number']
         if 'houseNumber' in data:
             user.house_number = data['houseNumber']
+        
+        # Role update - allow switching between buyer and seller
+        if 'role' in data:
+            new_role = data['role'].lower()
+            if new_role in ['buyer', 'seller']:
+                user.role = new_role
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid role. Must be "buyer" or "seller"'
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         # Bank/Payment fields (optional)
         bank_details_updated = False

@@ -201,6 +201,10 @@ OTP_EXPIRY_SECONDS = int(os.getenv('OTP_EXPIRY_SECONDS', 300))
 RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', '')
 
+# Frontend URL Configuration
+# Used for generating links in email notifications
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://dolabb.com')
+
 # Moyasar Payment Configuration
 MOYASAR_PUBLISHABLE_KEY = os.getenv('MOYASAR_PUBLISHABLE_KEY', '')
 MOYASAR_SECRET_KEY = os.getenv('MOYASAR_SECRET_KEY', '')

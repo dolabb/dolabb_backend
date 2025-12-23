@@ -1035,15 +1035,33 @@ class DisputeService:
         if dispute.order_id:
             try:
                 # Try to get the order - handle both ReferenceField and direct ID access
-                order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
-                order = Order.objects(id=order_obj_id).first()
-                if order:
-                    order_id = str(order.id)
-                    order_number = order.order_number if hasattr(order, 'order_number') else ''
+                # MongoDB ReferenceField stores ObjectId, but if document is deleted, accessing .id might fail
+                order_obj_id = None
+                if hasattr(dispute.order_id, 'id'):
+                    order_obj_id = dispute.order_id.id
+                elif hasattr(dispute.order_id, '__str__'):
+                    # Try to get ID as string and convert
+                    from bson import ObjectId
+                    try:
+                        order_obj_id = ObjectId(str(dispute.order_id))
+                    except:
+                        order_obj_id = None
                 else:
-                    # Order reference exists but order not found in database
+                    order_obj_id = dispute.order_id
+                
+                if order_obj_id:
+                    order = Order.objects(id=order_obj_id).first()
+                    if order:
+                        order_id = str(order.id)
+                        order_number = order.order_number if hasattr(order, 'order_number') else ''
+                    else:
+                        # Order reference exists but order not found in database (dangling reference)
+                        import logging
+                        logging.warning(f"Dispute {dispute_id} has order_id reference {order_obj_id} but order not found in database (order may have been deleted)")
+                else:
+                    # order_id field exists but we can't extract a valid ID
                     import logging
-                    logging.warning(f"Dispute {dispute_id} has order_id reference but order {order_obj_id} not found in database")
+                    logging.warning(f"Dispute {dispute_id} has order_id field but cannot extract valid order ID")
             except (AttributeError, Exception) as e:
                 # Order reference is broken or order doesn't exist
                 import logging
@@ -1051,6 +1069,10 @@ class DisputeService:
                 order = None
                 order_id = ''
                 order_number = ''
+        else:
+            # dispute.order_id is None or empty - this shouldn't happen as it's required=True
+            import logging
+            logging.warning(f"Dispute {dispute_id} has no order_id reference (this is unexpected as order_id is required)")
         
         # Format messages (includes both buyer and admin comments)
         messages = []
