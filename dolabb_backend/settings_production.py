@@ -184,6 +184,19 @@ cors_origins_env = os.getenv('CORS_ALLOWED_ORIGINS', '')
 if cors_origins_env:
     # Split by comma, strip whitespace, and filter empty strings
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
+    # Always add localhost origins for development
+    dev_origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",  # Vite default port
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:5173",  # Vite default port
+    ]
+    # Add dev origins if not already present
+    for origin in dev_origins:
+        if origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origin)
 else:
     # Default origins - includes production domain and development origins
     CORS_ALLOWED_ORIGINS = [
