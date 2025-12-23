@@ -27,6 +27,21 @@ def get_conversations(request):
 
 
 @api_view(['GET'])
+def get_unread_status(request):
+    """Get unread messages status - lightweight endpoint for tab indicator"""
+    try:
+        user_id = str(request.user.id)
+        status_data = ChatService.get_unread_messages_status(user_id)
+        
+        return Response({
+            'success': True,
+            **status_data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
 def get_messages(request, conversation_id):
     """Get messages for a conversation with pagination
     

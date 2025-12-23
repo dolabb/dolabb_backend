@@ -65,6 +65,28 @@ class ChatService:
         return conversations_list
     
     @staticmethod
+    def get_unread_messages_status(user_id):
+        """Get unread messages status for a user - lightweight check for tab indicator"""
+        conversations = Conversation.objects(participants=user_id).only('participants', 'unread_count_sender', 'unread_count_receiver')
+        
+        total_unread = 0
+        has_unread = False
+        
+        for conv in conversations:
+            # Determine which unread count to use based on user's position in participants
+            unread_count_str = conv.unread_count_sender if str(conv.participants[0].id) == str(user_id) else conv.unread_count_receiver
+            unread_count = int(unread_count_str or '0')
+            
+            if unread_count > 0:
+                has_unread = True
+                total_unread += unread_count
+        
+        return {
+            'hasUnreadMessages': has_unread,
+            'totalUnreadCount': total_unread
+        }
+    
+    @staticmethod
     def get_messages(conversation_id, user_id, page=1, limit=50):
         """Get messages for a conversation - Aggregates messages from ALL conversations between participants
         
