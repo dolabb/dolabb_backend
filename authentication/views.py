@@ -440,130 +440,130 @@ def get_profile(request):
             
             if not user or not hasattr(user, 'id'):
                 return Response({'success': False, 'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Helper function to safely get date
-        def get_date_safe(obj, *attrs):
-            for attr in attrs:
-                val = getattr(obj, attr, None)
-                if val:
-                    try:
-                        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
-                    except:
-                        return str(val)
-            return ''
-        
-        # Helper function to safely get attribute
-        def safe_get(obj, attr, default=''):
-            try:
-                val = getattr(obj, attr, default)
-                return val if val is not None else default
-            except:
-                return default
-        
-        # Helper function to normalize profile image URL
-        def normalize_image_url(url):
-            """Normalize image URL to ensure it's accessible"""
-            if not url or url == '':
+            
+            # Helper function to safely get date
+            def get_date_safe(obj, *attrs):
+                for attr in attrs:
+                    val = getattr(obj, attr, None)
+                    if val:
+                        try:
+                            return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+                        except:
+                            return str(val)
                 return ''
-            # If URL is already absolute, return as is
-            if url.startswith('http://') or url.startswith('https://'):
-                return url
-            # If URL is relative, make it absolute using current request
-            if url.startswith('/'):
-                return request.build_absolute_uri(url)
-            # If URL doesn't start with /, add /media/ prefix if it's a media file
-            if 'uploads' in url or 'profiles' in url:
-                return request.build_absolute_uri(f'/media/{url}')
-            return url
-        
-        # Handle different user types
-        if hasattr(user, 'username'):  # Regular User
-            user_data = {
-                'id': str(user.id),
-                'username': safe_get(user, 'username'),
-                'email': safe_get(user, 'email'),
-                'phone': safe_get(user, 'phone'),
-                'full_name': safe_get(user, 'full_name'),
-                'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
-                'bio': safe_get(user, 'bio') or '',
-                'location': safe_get(user, 'location') or '',
-                'shipping_address': safe_get(user, 'shipping_address') or '',
-                'zip_code': safe_get(user, 'zip_code') or '',
-                'house_number': safe_get(user, 'house_number') or '',
-                'joined_date': get_date_safe(user, 'join_date', 'created_at'),
-                'role': safe_get(user, 'role', 'buyer'),
-                'language': getattr(user, 'language', 'en')  # Default to 'en' if not set
-            }
             
-            # Add seller rating and review count if user is a seller
-            if safe_get(user, 'role', 'buyer') == 'seller':
+            # Helper function to safely get attribute
+            def safe_get(obj, attr, default=''):
                 try:
-                    from products.services import ReviewService
-                    rating_stats = ReviewService.get_seller_rating_stats(str(user.id))
-                    user_data['rating'] = {
-                        'averageRating': rating_stats['average_rating'],
-                        'totalReviews': rating_stats['total_reviews'],
-                        'ratingDistribution': rating_stats['rating_distribution']
-                    }
-                except Exception:
-                    # If rating service fails, set defaults
-                    user_data['rating'] = {
-                        'averageRating': 0.0,
-                        'totalReviews': 0,
-                        'ratingDistribution': {'5': 0, '4': 0, '3': 0, '2': 0, '1': 0}
-                    }
+                    val = getattr(obj, attr, default)
+                    return val if val is not None else default
+                except:
+                    return default
             
-            return Response({
-                'success': True,
-                'user': user_data
-            }, status=status.HTTP_200_OK)
-        
-        elif hasattr(user, 'name'):  # Admin
-            return Response({
-                'success': True,
-                'user': {
-                    'id': str(user.id),
-                    'username': '',
-                    'email': safe_get(user, 'email'),
-                    'phone': '',
-                    'full_name': safe_get(user, 'name'),
-                    'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
-                    'bio': '',
-                    'location': '',
-                    'joined_date': get_date_safe(user, 'created_at'),
-                    'role': safe_get(user, 'role', 'admin')
-                }
-            }, status=status.HTTP_200_OK)
-        
-        elif hasattr(user, 'full_name') and hasattr(user, 'affiliate_code'):  # Affiliate
-            # Format earnings and usage count as numbers
-            total_earnings = float(user.total_earnings) if hasattr(user, 'total_earnings') and user.total_earnings else 0.0
-            pending_earnings = float(user.pending_earnings) if hasattr(user, 'pending_earnings') and user.pending_earnings else 0.0
-            paid_earnings = float(user.paid_earnings) if hasattr(user, 'paid_earnings') and user.paid_earnings else 0.0
-            code_usage_count = int(user.code_usage_count) if hasattr(user, 'code_usage_count') and user.code_usage_count else 0
+            # Helper function to normalize profile image URL
+            def normalize_image_url(url):
+                """Normalize image URL to ensure it's accessible"""
+                if not url or url == '':
+                    return ''
+                # If URL is already absolute, return as is
+                if url.startswith('http://') or url.startswith('https://'):
+                    return url
+                # If URL is relative, make it absolute using current request
+                if url.startswith('/'):
+                    return request.build_absolute_uri(url)
+                # If URL doesn't start with /, add /media/ prefix if it's a media file
+                if 'uploads' in url or 'profiles' in url:
+                    return request.build_absolute_uri(f'/media/{url}')
+                return url
             
-            return Response({
-                'success': True,
-                'user': {
+            # Handle different user types
+            if hasattr(user, 'username'):  # Regular User
+                user_data = {
                     'id': str(user.id),
-                    'username': '',
+                    'username': safe_get(user, 'username'),
                     'email': safe_get(user, 'email'),
                     'phone': safe_get(user, 'phone'),
                     'full_name': safe_get(user, 'full_name'),
                     'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
-                    'bio': '',
-                    'location': '',
-                    'joined_date': get_date_safe(user, 'created_at'),
-                    'role': 'affiliate',
-                    'affiliate_code': safe_get(user, 'affiliate_code'),
-                    'totalEarnings': total_earnings,
-                    'pendingEarnings': pending_earnings,
-                    'paidEarnings': paid_earnings,
-                    'codeUsageCount': code_usage_count,
-                    'availableBalance': pending_earnings
+                    'bio': safe_get(user, 'bio') or '',
+                    'location': safe_get(user, 'location') or '',
+                    'shipping_address': safe_get(user, 'shipping_address') or '',
+                    'zip_code': safe_get(user, 'zip_code') or '',
+                    'house_number': safe_get(user, 'house_number') or '',
+                    'joined_date': get_date_safe(user, 'join_date', 'created_at'),
+                    'role': safe_get(user, 'role', 'buyer'),
+                    'language': getattr(user, 'language', 'en')  # Default to 'en' if not set
                 }
-            }, status=status.HTTP_200_OK)
-        
+                
+                # Add seller rating and review count if user is a seller
+                if safe_get(user, 'role', 'buyer') == 'seller':
+                    try:
+                        from products.services import ReviewService
+                        rating_stats = ReviewService.get_seller_rating_stats(str(user.id))
+                        user_data['rating'] = {
+                            'averageRating': rating_stats['average_rating'],
+                            'totalReviews': rating_stats['total_reviews'],
+                            'ratingDistribution': rating_stats['rating_distribution']
+                        }
+                    except Exception:
+                        # If rating service fails, set defaults
+                        user_data['rating'] = {
+                            'averageRating': 0.0,
+                            'totalReviews': 0,
+                            'ratingDistribution': {'5': 0, '4': 0, '3': 0, '2': 0, '1': 0}
+                        }
+                
+                return Response({
+                    'success': True,
+                    'user': user_data
+                }, status=status.HTTP_200_OK)
+            
+            elif hasattr(user, 'name'):  # Admin
+                return Response({
+                    'success': True,
+                    'user': {
+                        'id': str(user.id),
+                        'username': '',
+                        'email': safe_get(user, 'email'),
+                        'phone': '',
+                        'full_name': safe_get(user, 'name'),
+                        'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
+                        'bio': '',
+                        'location': '',
+                        'joined_date': get_date_safe(user, 'created_at'),
+                        'role': safe_get(user, 'role', 'admin')
+                    }
+                }, status=status.HTTP_200_OK)
+            
+            elif hasattr(user, 'full_name') and hasattr(user, 'affiliate_code'):  # Affiliate
+                # Format earnings and usage count as numbers
+                total_earnings = float(user.total_earnings) if hasattr(user, 'total_earnings') and user.total_earnings else 0.0
+                pending_earnings = float(user.pending_earnings) if hasattr(user, 'pending_earnings') and user.pending_earnings else 0.0
+                paid_earnings = float(user.paid_earnings) if hasattr(user, 'paid_earnings') and user.paid_earnings else 0.0
+                code_usage_count = int(user.code_usage_count) if hasattr(user, 'code_usage_count') and user.code_usage_count else 0
+                
+                return Response({
+                    'success': True,
+                    'user': {
+                        'id': str(user.id),
+                        'username': '',
+                        'email': safe_get(user, 'email'),
+                        'phone': safe_get(user, 'phone'),
+                        'full_name': safe_get(user, 'full_name'),
+                        'profile_image': normalize_image_url(safe_get(user, 'profile_image') or ''),
+                        'bio': '',
+                        'location': '',
+                        'joined_date': get_date_safe(user, 'created_at'),
+                        'role': 'affiliate',
+                        'affiliate_code': safe_get(user, 'affiliate_code'),
+                        'totalEarnings': total_earnings,
+                        'pendingEarnings': pending_earnings,
+                        'paidEarnings': paid_earnings,
+                        'codeUsageCount': code_usage_count,
+                        'availableBalance': pending_earnings
+                    }
+                }, status=status.HTTP_200_OK)
+            
             return Response({'success': False, 'error': 'Invalid user type'}, status=status.HTTP_400_BAD_REQUEST)
         
         except AttributeError as e:
