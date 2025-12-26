@@ -1184,6 +1184,56 @@ class DisputeService:
         return disputes_list, total
     
     @staticmethod
+    def get_seller_disputes(seller_id, page=1, limit=20, status_filter=None):
+        """Get disputes for a specific seller"""
+        from products.models import Order
+        
+        query = Dispute.objects(seller_id=seller_id)
+        
+        if status_filter:
+            query = query.filter(status=status_filter)
+        
+        total = query.count()
+        skip = (page - 1) * limit
+        disputes = query.order_by('-created_at').skip(skip).limit(limit)
+        
+        disputes_list = []
+        for dispute in disputes:
+            # Get order to fetch order_number - handle broken references safely
+            order = None
+            order_id = ''
+            order_number = ''
+            if dispute.order_id:
+                try:
+                    order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
+                    order = Order.objects(id=order_obj_id).first()
+                    if order:
+                        order_id = str(order.id)
+                        order_number = order.order_number if hasattr(order, 'order_number') else ''
+                except (AttributeError, Exception):
+                    # Order reference is broken or order doesn't exist
+                    order_id = ''
+                    order_number = ''
+            
+            disputes_list.append({
+                '_id': str(dispute.id),
+                'caseNumber': dispute.case_number,
+                'type': dispute.dispute_type,
+                'buyerName': dispute.buyer_name,
+                'sellerName': dispute.seller_name,
+                'orderId': order_id,
+                'orderNumber': order_number,
+                'itemTitle': dispute.item_title,
+                'description': dispute.description,
+                'status': dispute.status,
+                'createdAt': dispute.created_at.isoformat(),
+                'updatedAt': dispute.updated_at.isoformat(),
+                'messageCount': len(dispute.messages) if dispute.messages else 0
+            })
+        
+        return disputes_list, total
+    
+    @staticmethod
     def get_dispute_details(dispute_id, user_id=None, user_type=None):
         """Get dispute details"""
         from products.models import Order
@@ -1192,10 +1242,13 @@ class DisputeService:
         if not dispute:
             raise ValueError("Dispute not found")
         
-        # Check if user has access (buyer can only see their own disputes)
+        # Check if user has access (buyer/seller can only see their own disputes)
         if user_id and user_type == 'buyer':
             if str(dispute.buyer_id.id) != user_id:
                 raise ValueError("Unauthorized: You can only view your own disputes")
+        elif user_id and user_type == 'seller':
+            if str(dispute.seller_id.id) != user_id:
+                raise ValueError("Unauthorized: You can only view disputes related to your products")
         
         buyer = User.objects(id=dispute.buyer_id.id).first()
         seller = User.objects(id=dispute.seller_id.id).first()

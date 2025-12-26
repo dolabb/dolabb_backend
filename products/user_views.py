@@ -813,16 +813,21 @@ def create_dispute(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_my_disputes(request):
-    """Get buyer's own disputes"""
+    """Get user's own disputes (buyer or seller)"""
     try:
         from admin_dashboard.services import DisputeService
         
-        buyer_id = str(request.user.id)
+        user_id = str(request.user.id)
+        user_role = getattr(request.user, 'role', 'buyer')  # Default to buyer if role not set
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 20))
         status_filter = request.GET.get('status')  # Optional: 'open', 'resolved', 'closed'
         
-        disputes, total = DisputeService.get_buyer_disputes(buyer_id, page, limit, status_filter)
+        # Get disputes based on user role
+        if user_role == 'seller':
+            disputes, total = DisputeService.get_seller_disputes(user_id, page, limit, status_filter)
+        else:
+            disputes, total = DisputeService.get_buyer_disputes(user_id, page, limit, status_filter)
         
         return Response({
             'success': True,
@@ -840,12 +845,16 @@ def get_my_disputes(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_my_dispute_details(request, dispute_id):
-    """Get buyer's dispute details"""
+    """Get user's dispute details (buyer or seller)"""
     try:
         from admin_dashboard.services import DisputeService
         
-        buyer_id = str(request.user.id)
-        dispute_details = DisputeService.get_dispute_details(dispute_id, buyer_id, 'buyer')
+        user_id = str(request.user.id)
+        user_role = getattr(request.user, 'role', 'buyer')  # Default to buyer if role not set
+        
+        # Pass user_type based on role
+        user_type = 'seller' if user_role == 'seller' else 'buyer'
+        dispute_details = DisputeService.get_dispute_details(dispute_id, user_id, user_type)
         
         return Response({
             'success': True,
@@ -860,26 +869,43 @@ def get_my_dispute_details(request, dispute_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_dispute_comment(request, dispute_id):
-    """Add a comment to dispute (buyer action)"""
+    """Add a comment to dispute (buyer or seller action)"""
     try:
         from admin_dashboard.services import DisputeService
+        from admin_dashboard.models import Dispute
         from authentication.models import User
         
-        buyer_id = str(request.user.id)
+        user_id = str(request.user.id)
+        user_role = getattr(request.user, 'role', 'buyer')  # Default to buyer if role not set
         message = request.data.get('message', '').strip()
         
         if not message:
             return Response({'success': False, 'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        buyer = User.objects(id=buyer_id).first()
-        buyer_name = buyer.full_name or buyer.username if buyer else 'Buyer'
+        # Verify user has access to this dispute
+        dispute = Dispute.objects(id=dispute_id).first()
+        if not dispute:
+            return Response({'success': False, 'error': 'Dispute not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is buyer or seller of this dispute
+        if user_role == 'seller':
+            if str(dispute.seller_id.id) != user_id:
+                return Response({'success': False, 'error': 'Unauthorized: You can only comment on disputes related to your products'}, status=status.HTTP_403_FORBIDDEN)
+            sender_type = 'buyer'  # Using 'buyer' type since DisputeMessage model only supports 'buyer' and 'admin'
+        else:
+            if str(dispute.buyer_id.id) != user_id:
+                return Response({'success': False, 'error': 'Unauthorized: You can only comment on your own disputes'}, status=status.HTTP_403_FORBIDDEN)
+            sender_type = 'buyer'
+        
+        user = User.objects(id=user_id).first()
+        user_name = user.full_name or user.username if user else ('Seller' if user_role == 'seller' else 'Buyer')
         
         comment = DisputeService.add_dispute_comment(
             dispute_id=dispute_id,
             message=message,
-            sender_id=buyer_id,
-            sender_type='buyer',
-            sender_name=buyer_name
+            sender_id=user_id,
+            sender_type=sender_type,
+            sender_name=user_name
         )
         
         return Response({
@@ -896,7 +922,7 @@ def add_dispute_comment(request, dispute_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_dispute_evidence(request, dispute_id):
-    """Upload dispute evidence (buyer action)"""
+    """Upload dispute evidence (buyer or seller action)"""
     try:
         from admin_dashboard.models import Dispute
         from authentication.models import User
@@ -905,15 +931,30 @@ def upload_dispute_evidence(request, dispute_id):
         import uuid
         from datetime import datetime
         
-        buyer_id = str(request.user.id)
+        user_id = str(request.user.id)
+        user_role = getattr(request.user, 'role', 'buyer')  # Default to buyer if role not set
         
-        # Verify dispute exists and belongs to buyer
-        dispute = Dispute.objects(id=dispute_id, buyer_id=buyer_id).first()
+        # Verify dispute exists and user has access
+        dispute = Dispute.objects(id=dispute_id).first()
         if not dispute:
             return Response({
                 'success': False,
-                'error': 'Dispute not found or you do not have permission to upload evidence for this dispute'
+                'error': 'Dispute not found'
             }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is buyer or seller of this dispute
+        if user_role == 'seller':
+            if str(dispute.seller_id.id) != user_id:
+                return Response({
+                    'success': False,
+                    'error': 'Unauthorized: You can only upload evidence for disputes related to your products'
+                }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            if str(dispute.buyer_id.id) != user_id:
+                return Response({
+                    'success': False,
+                    'error': 'Unauthorized: You can only upload evidence for your own disputes'
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if file is provided
         if 'file' not in request.FILES:
@@ -1046,9 +1087,9 @@ def upload_dispute_evidence(request, dispute_id):
             file_url = f"{media_url}/uploads/disputes/{dispute_id}/{unique_filename}"
             absolute_url = request.build_absolute_uri(file_url)
         
-        # Get buyer info
-        buyer = User.objects(id=buyer_id).first()
-        buyer_name = buyer.full_name or buyer.username if buyer else 'Buyer'
+        # Get user info
+        user = User.objects(id=user_id).first()
+        user_name = user.full_name or user.username if user else ('Seller' if user_role == 'seller' else 'Buyer')
         
         # Create evidence document
         from admin_dashboard.models import DisputeEvidence
@@ -1061,8 +1102,8 @@ def upload_dispute_evidence(request, dispute_id):
             file_type=file.content_type.split('/')[0] if file.content_type else 'file',
             content_type=file.content_type or '',
             description=description,
-            uploaded_by=buyer_id,
-            uploaded_by_name=buyer_name,
+            uploaded_by=user_id,
+            uploaded_by_name=user_name,
             uploaded_at=datetime.utcnow()
         )
         
@@ -1086,8 +1127,8 @@ def upload_dispute_evidence(request, dispute_id):
                 'description': description,
                 'uploaded_at': evidence.uploaded_at.isoformat(),
                 'uploaded_by': {
-                    'id': buyer_id,
-                    'name': buyer_name
+                    'id': user_id,
+                    'name': user_name
                 }
             }
         }, status=status.HTTP_201_CREATED)
