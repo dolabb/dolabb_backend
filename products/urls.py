@@ -3,6 +3,7 @@ Product URLs
 """
 from django.urls import path
 from products import views
+from products.user_views import upload_dispute_evidence  # Import for dispute evidence upload
 
 urlpatterns = [
     path('', views.get_products, name='get_products'),
@@ -16,6 +17,8 @@ urlpatterns = [
     path('cart/', views.get_cart, name='get_cart'),
     # Public Hero Section - Must come before product_id routes to avoid route conflicts
     path('hero-section/', views.get_hero_section_public, name='get_hero_section_public'),
+    # Dispute evidence upload - Must come before product_id routes to avoid conflicts
+    path('disputes/<str:dispute_id>/evidence/', upload_dispute_evidence, name='upload_dispute_evidence_products'),
     # Product ID routes - Must come after specific routes
     path('<str:product_id>/update/', views.update_product, name='update_product'),
     path('<str:product_id>/delete/', views.delete_product, name='delete_product'),
