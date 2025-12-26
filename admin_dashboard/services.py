@@ -928,6 +928,73 @@ class DisputeService:
     """Dispute service"""
     
     @staticmethod
+    def _get_order_info(dispute_order_id, dispute_id=None):
+        """Helper method to extract order information from dispute.order_id ReferenceField"""
+        from products.models import Order
+        from bson import ObjectId
+        import logging
+        
+        order = None
+        order_id = ''
+        order_number = ''
+        
+        if not dispute_order_id:
+            if dispute_id:
+                logging.warning(f"Dispute {dispute_id}: order_id is None or empty")
+            return order, order_id, order_number
+        
+        try:
+            # Method 1: If it's already a dereferenced Order object
+            if isinstance(dispute_order_id, Order):
+                order = dispute_order_id
+            else:
+                # Method 2: Extract ObjectId and query
+                order_obj_id = None
+                
+                # Try different ways to get the ObjectId from ReferenceField
+                if hasattr(dispute_order_id, 'pk') and dispute_order_id.pk:
+                    order_obj_id = dispute_order_id.pk
+                elif hasattr(dispute_order_id, 'id') and dispute_order_id.id:
+                    order_obj_id = dispute_order_id.id
+                elif isinstance(dispute_order_id, ObjectId):
+                    order_obj_id = dispute_order_id
+                elif isinstance(dispute_order_id, str):
+                    try:
+                        order_obj_id = ObjectId(dispute_order_id)
+                    except:
+                        pass
+                else:
+                    # Try converting to string first, then to ObjectId
+                    try:
+                        order_obj_id = ObjectId(str(dispute_order_id))
+                    except:
+                        pass
+                
+                # Query the order
+                if order_obj_id:
+                    order = Order.objects(id=order_obj_id).first()
+                    if not order and dispute_id:
+                        logging.warning(f"Dispute {dispute_id}: Order with ID {order_obj_id} not found in database")
+                else:
+                    # Last resort: try querying directly with the raw value
+                    try:
+                        order = Order.objects(id=dispute_order_id).first()
+                    except Exception as query_error:
+                        if dispute_id:
+                            logging.warning(f"Dispute {dispute_id}: Could not query order. order_id type: {type(dispute_order_id)}, value: {dispute_order_id}, error: {str(query_error)}")
+            
+            # Extract order_id and order_number if order was found
+            if order:
+                order_id = str(order.id)
+                order_number = getattr(order, 'order_number', '') or ''
+                if not order_number and dispute_id:
+                    logging.warning(f"Dispute {dispute_id}: Order {order_id} found but order_number is empty")
+        except Exception as e:
+            logging.error(f"Error in _get_order_info for dispute {dispute_id}: {str(e)}", exc_info=True)
+        
+        return order, order_id, order_number
+    
+    @staticmethod
     def generate_case_number():
         """Generate unique case number"""
         year = datetime.utcnow().year
@@ -1134,69 +1201,8 @@ class DisputeService:
         seller = User.objects(id=dispute.seller_id.id).first()
         product = Product.objects(id=dispute.item_id.id).first()
         
-        # Safely get order information - handle cases where order_id is None or order doesn't exist
-        order = None
-        order_id = ''
-        order_number = ''
-        
-        try:
-            if dispute.order_id:
-                from bson import ObjectId
-                
-                # Try multiple methods to get the order
-                # Method 1: If it's already a dereferenced Order object
-                if isinstance(dispute.order_id, Order):
-                    order = dispute.order_id
-                else:
-                    # Method 2: Extract ObjectId and query
-                    order_obj_id = None
-                    
-                    # Try different ways to get the ObjectId from ReferenceField
-                    # Check if it has a pk attribute (mongoengine ReferenceField)
-                    if hasattr(dispute.order_id, 'pk') and dispute.order_id.pk:
-                        order_obj_id = dispute.order_id.pk
-                    elif hasattr(dispute.order_id, 'id') and dispute.order_id.id:
-                        order_obj_id = dispute.order_id.id
-                    elif isinstance(dispute.order_id, ObjectId):
-                        order_obj_id = dispute.order_id
-                    elif isinstance(dispute.order_id, str):
-                        try:
-                            order_obj_id = ObjectId(dispute.order_id)
-                        except:
-                            pass
-                    else:
-                        # Try converting to string first, then to ObjectId
-                        try:
-                            order_obj_id = ObjectId(str(dispute.order_id))
-                        except:
-                            pass
-                    
-                    # Query the order
-                    if order_obj_id:
-                        order = Order.objects(id=order_obj_id).first()
-                    else:
-                        # Last resort: try querying directly with the raw value
-                        try:
-                            order = Order.objects(id=dispute.order_id).first()
-                        except:
-                            pass
-                
-                # Extract order_id and order_number if order was found
-                if order:
-                    order_id = str(order.id)
-                    order_number = getattr(order, 'order_number', '') or ''
-                else:
-                    import logging
-                    logging.warning(f"Dispute {dispute_id}: Order not found. order_id type: {type(dispute.order_id)}, value: {dispute.order_id}")
-            else:
-                import logging
-                logging.warning(f"Dispute {dispute_id} has no order_id reference")
-        except Exception as e:
-            import logging
-            logging.error(f"Error fetching order for dispute {dispute_id}: {str(e)}", exc_info=True)
-            order = None
-            order_id = ''
-            order_number = ''
+        # Safely get order information using helper method
+        order, order_id, order_number = DisputeService._get_order_info(dispute.order_id, dispute_id)
         
         # Format messages (includes both buyer and admin comments)
         messages = []
@@ -1336,28 +1342,8 @@ class DisputeService:
                 logging.error(f"Error sending dispute reply email notification: {str(e)}")
         
         # Get order information if available (especially for admin comments)
-        # Handle cases where order_id is None, broken reference, or order doesn't exist
-        order_id = ''
-        order_number = ''
-        if dispute.order_id:
-            try:
-                from products.models import Order
-                # Try to get the order - handle both ReferenceField and direct ID access
-                order_obj_id = dispute.order_id.id if hasattr(dispute.order_id, 'id') else dispute.order_id
-                order = Order.objects(id=order_obj_id).first()
-                if order:
-                    order_id = str(order.id)
-                    order_number = order.order_number if hasattr(order, 'order_number') else ''
-                else:
-                    # Order reference exists but order not found in database
-                    import logging
-                    logging.warning(f"Dispute {dispute_id} has order_id reference but order {order_obj_id} not found when adding comment")
-            except (AttributeError, Exception) as e:
-                # Order reference is broken or order doesn't exist - use empty values
-                import logging
-                logging.warning(f"Error fetching order for dispute {dispute_id} when adding comment: {str(e)}")
-                order_id = ''
-                order_number = ''
+        # Use helper method for consistent order retrieval
+        order, order_id, order_number = DisputeService._get_order_info(dispute.order_id, dispute_id)
         
         comment_response = {
             'id': str(dispute_message.id) if hasattr(dispute_message, 'id') else 'temp_id',
