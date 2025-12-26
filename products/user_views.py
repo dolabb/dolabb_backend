@@ -1104,6 +1104,7 @@ def upload_dispute_evidence(request, dispute_id):
             description=description,
             uploaded_by=user_id,
             uploaded_by_name=user_name,
+            uploaded_by_type=user_role,  # 'buyer' or 'seller'
             uploaded_at=datetime.utcnow()
         )
         
@@ -1128,7 +1129,8 @@ def upload_dispute_evidence(request, dispute_id):
                 'uploaded_at': evidence.uploaded_at.isoformat(),
                 'uploaded_by': {
                     'id': user_id,
-                    'name': user_name
+                    'name': user_name,
+                    'type': user_role  # 'buyer' or 'seller'
                 }
             }
         }, status=status.HTTP_201_CREATED)

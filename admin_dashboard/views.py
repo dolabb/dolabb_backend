@@ -777,6 +777,7 @@ def upload_dispute_evidence(request, dispute_id):
             description=description,
             uploaded_by=str(request.user.id),
             uploaded_by_name=admin_name,
+            uploaded_by_type='admin',  # Admin upload
             uploaded_at=datetime.utcnow()
         )
         
@@ -800,7 +801,8 @@ def upload_dispute_evidence(request, dispute_id):
                 'uploaded_at': evidence.uploaded_at.isoformat(),
                 'uploaded_by': {
                     'id': str(request.user.id),
-                    'name': admin_name
+                    'name': admin_name,
+                    'type': 'admin'
                 }
             }
         }, status=status.HTTP_201_CREATED)

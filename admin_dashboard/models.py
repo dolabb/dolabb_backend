@@ -71,6 +71,7 @@ class DisputeEvidence(EmbeddedDocument):
     description = StringField()  # Optional description
     uploaded_by = StringField(required=True)  # User ID who uploaded
     uploaded_by_name = StringField()  # Name of uploader
+    uploaded_by_type = StringField(choices=['buyer', 'seller', 'admin'], default='buyer')  # Type of uploader
     uploaded_at = DateTimeField(required=True, default=datetime.utcnow)
 
 

@@ -1371,7 +1371,8 @@ class DisputeService:
                     'description': ev.description or '',
                     'uploadedBy': {
                         'id': ev.uploaded_by,
-                        'name': ev.uploaded_by_name or ''
+                        'name': ev.uploaded_by_name or '',
+                        'type': ev.uploaded_by_type or 'buyer'  # buyer, seller, or admin
                     },
                     'uploadedAt': ev.uploaded_at.isoformat() if ev.uploaded_at else ''
                 }
