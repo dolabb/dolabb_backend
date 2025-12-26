@@ -42,6 +42,8 @@ class CashoutRequest(Document):
     reviewed_at = DateTimeField()
     reviewed_by = StringField()
     notes = StringField()  # Admin notes
+    moyasar_payout_id = StringField()  # Moyasar payout transaction ID
+    payout_error = StringField()  # Error message if payout fails
     
     meta = {
         'collection': 'cashout_requests',
@@ -56,6 +58,20 @@ class DisputeMessage(EmbeddedDocument):
     sender_id = StringField(required=True)
     sender_name = StringField()
     created_at = DateTimeField(default=datetime.utcnow)
+
+
+class DisputeEvidence(EmbeddedDocument):
+    """Dispute evidence/file model"""
+    id = StringField(required=True)  # Unique ID for the evidence
+    url = StringField(required=True)  # File URL
+    filename = StringField(required=True)  # Stored filename
+    original_filename = StringField()  # Original filename
+    file_type = StringField()  # File type (image, document, etc.)
+    content_type = StringField()  # MIME type
+    description = StringField()  # Optional description
+    uploaded_by = StringField(required=True)  # User ID who uploaded
+    uploaded_by_name = StringField()  # Name of uploader
+    uploaded_at = DateTimeField(required=True, default=datetime.utcnow)
 
 
 class Dispute(Document):
@@ -74,6 +90,7 @@ class Dispute(Document):
     admin_notes = StringField()
     resolution = StringField()
     messages = ListField(EmbeddedDocumentField(DisputeMessage), default=list)
+    evidence = ListField(EmbeddedDocumentField(DisputeEvidence), default=list)  # Evidence files
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     

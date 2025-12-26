@@ -5,7 +5,7 @@ from django.urls import path
 from products.user_views import (
     get_user_products, get_user_orders, get_user_offers, ship_order, update_order_status,
     create_review, get_product_reviews, get_seller_rating, get_seller_reviews, create_dispute,
-    get_my_disputes, get_my_dispute_details, add_dispute_comment, get_products_by_seller
+    get_my_disputes, get_my_dispute_details, add_dispute_comment, upload_dispute_evidence, get_products_by_seller
 )
 
 urlpatterns = [
@@ -24,6 +24,7 @@ urlpatterns = [
     path('seller/<str:seller_id>/products/', get_products_by_seller, name='get_products_by_seller'),
     # Dispute/Report endpoints - Order matters: more specific routes first
     path('disputes/create/', create_dispute, name='create_dispute'),
+    path('disputes/<str:dispute_id>/evidence/', upload_dispute_evidence, name='upload_dispute_evidence'),
     path('disputes/<str:dispute_id>/comments/', add_dispute_comment, name='add_dispute_comment'),
     path('disputes/<str:dispute_id>/', get_my_dispute_details, name='get_my_dispute_details'),
     path('disputes/', get_my_disputes, name='get_my_disputes'),

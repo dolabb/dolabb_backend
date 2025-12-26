@@ -891,3 +891,153 @@ def add_dispute_comment(request, dispute_id):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_dispute_evidence(request, dispute_id):
+    """Upload dispute evidence (buyer action)"""
+    try:
+        from admin_dashboard.models import Dispute
+        from authentication.models import User
+        from django.conf import settings
+        import os
+        import uuid
+        from datetime import datetime
+        
+        buyer_id = str(request.user.id)
+        
+        # Verify dispute exists and belongs to buyer
+        dispute = Dispute.objects(id=dispute_id, buyer_id=buyer_id).first()
+        if not dispute:
+            return Response({
+                'success': False,
+                'error': 'Dispute not found or you do not have permission to upload evidence for this dispute'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if file is provided
+        if 'file' not in request.FILES:
+            return Response({
+                'success': False,
+                'error': 'File is required. Please use "file" as the field name.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        file = request.FILES['file']
+        description = request.data.get('description', '')
+        
+        # Validate file size (max 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        if file.size > max_size:
+            return Response({
+                'success': False,
+                'error': 'File size too large. Maximum size is 10MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file type - allow images and documents
+        allowed_image_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+        allowed_doc_types = ['application/pdf', 'application/msword', 
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        allowed_types = allowed_image_types + allowed_doc_types
+        
+        if file.content_type not in allowed_types:
+            return Response({
+                'success': False,
+                'error': 'Invalid file type. Allowed types: Images (JPEG, PNG, GIF, WebP) or Documents (PDF, DOC, DOCX)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate unique filename
+        file_extension = os.path.splitext(file.name)[1]
+        unique_filename = f"dispute_evidence_{dispute_id}_{uuid.uuid4().hex[:12]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
+        
+        # Try VPS upload first if enabled
+        vps_enabled = getattr(settings, 'VPS_ENABLED', False)
+        absolute_url = None
+        file_path = None
+        
+        if vps_enabled:
+            try:
+                from storage.vps_helper import upload_file_to_vps
+                file_bytes = file.read()
+                success, result = upload_file_to_vps(
+                    file_bytes,
+                    f'uploads/disputes/{dispute_id}',
+                    unique_filename
+                )
+                if success:
+                    absolute_url = result
+            except Exception as e:
+                import logging
+                logging.warning(f"VPS upload failed for dispute evidence: {str(e)}")
+                vps_enabled = False
+        
+        if not vps_enabled or not absolute_url:
+            # Local storage fallback
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'disputes', dispute_id)
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(upload_dir, unique_filename)
+            
+            # Save file
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+            
+            # Generate absolute URL
+            media_url = settings.MEDIA_URL.rstrip('/')
+            if not media_url.startswith('/'):
+                media_url = '/' + media_url
+            file_url = f"{media_url}/uploads/disputes/{dispute_id}/{unique_filename}"
+            absolute_url = request.build_absolute_uri(file_url)
+        
+        # Get buyer info
+        buyer = User.objects(id=buyer_id).first()
+        buyer_name = buyer.full_name or buyer.username if buyer else 'Buyer'
+        
+        # Create evidence document
+        from admin_dashboard.models import DisputeEvidence
+        evidence_id = str(uuid.uuid4())
+        evidence = DisputeEvidence(
+            id=evidence_id,
+            url=absolute_url,
+            filename=unique_filename,
+            original_filename=file.name,
+            file_type=file.content_type.split('/')[0] if file.content_type else 'file',
+            content_type=file.content_type or '',
+            description=description,
+            uploaded_by=buyer_id,
+            uploaded_by_name=buyer_name,
+            uploaded_at=datetime.utcnow()
+        )
+        
+        # Add evidence to dispute
+        if not dispute.evidence:
+            dispute.evidence = []
+        dispute.evidence.append(evidence)
+        dispute.updated_at = datetime.utcnow()
+        dispute.save()
+        
+        # Return success response
+        return Response({
+            'success': True,
+            'message': 'Evidence uploaded successfully',
+            'evidence': {
+                'id': evidence_id,
+                'type': evidence.file_type,
+                'url': absolute_url,
+                'filename': unique_filename,
+                'originalFilename': file.name,
+                'description': description,
+                'uploaded_at': evidence.uploaded_at.isoformat(),
+                'uploaded_by': {
+                    'id': buyer_id,
+                    'name': buyer_name
+                }
+            }
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        import logging
+        logging.error(f"Error uploading dispute evidence: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

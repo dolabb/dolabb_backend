@@ -1306,7 +1306,24 @@ class DisputeService:
             'created_at': dispute.created_at.isoformat(),
             'updated_at': dispute.updated_at.isoformat(),
             'messages': messages,
-            'timeline': timeline
+            'timeline': timeline,
+            'evidence': [
+                {
+                    'id': ev.id,
+                    'url': ev.url,
+                    'filename': ev.filename,
+                    'originalFilename': ev.original_filename or ev.filename,
+                    'type': ev.file_type or 'file',
+                    'contentType': ev.content_type or '',
+                    'description': ev.description or '',
+                    'uploadedBy': {
+                        'id': ev.uploaded_by,
+                        'name': ev.uploaded_by_name or ''
+                    },
+                    'uploadedAt': ev.uploaded_at.isoformat() if ev.uploaded_at else ''
+                }
+                for ev in (dispute.evidence or [])
+            ]
         }
     
     @staticmethod
