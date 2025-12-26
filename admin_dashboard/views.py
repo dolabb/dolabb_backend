@@ -641,6 +641,7 @@ def add_dispute_message(request, dispute_id):
         from authentication.models import User
         
         message = request.data.get('message', '').strip()
+        order_id_from_payload = request.data.get('order_id') or request.data.get('orderId')
         admin_id = str(request.user.id)
         
         if not message:
@@ -654,7 +655,8 @@ def add_dispute_message(request, dispute_id):
             message=message,
             sender_id=admin_id,
             sender_type='admin',
-            sender_name=admin_name
+            sender_name=admin_name,
+            order_id_to_restore=order_id_from_payload  # Pass order_id from payload to restore if missing
         )
         
         return Response({

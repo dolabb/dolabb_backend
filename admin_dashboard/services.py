@@ -1310,9 +1310,12 @@ class DisputeService:
         }
     
     @staticmethod
-    def add_dispute_comment(dispute_id, message, sender_id, sender_type, sender_name):
+    def add_dispute_comment(dispute_id, message, sender_id, sender_type, sender_name, order_id_to_restore=None):
         """Add comment to dispute (buyer or admin)"""
         from admin_dashboard.models import DisputeMessage
+        from products.models import Order
+        from bson import ObjectId
+        import logging
         
         dispute = Dispute.objects(id=dispute_id).first()
         if not dispute:
@@ -1324,6 +1327,43 @@ class DisputeService:
         # Verify buyer can only comment on their own disputes
         if sender_type == 'buyer' and str(dispute.buyer_id.id) != sender_id:
             raise ValueError("Unauthorized: You can only comment on your own disputes")
+        
+        # Fix: If order_id is missing, try to restore it before saving
+        if not dispute.order_id:
+            order_to_restore = None
+            
+            # Method 1: Use order_id from payload if provided
+            if order_id_to_restore:
+                try:
+                    order_obj_id = ObjectId(order_id_to_restore) if isinstance(order_id_to_restore, str) else order_id_to_restore
+                    order_to_restore = Order.objects(id=order_obj_id).first()
+                    if order_to_restore:
+                        logging.info(f"Dispute {dispute_id}: Restoring order_id {order_obj_id} from payload")
+                except Exception as e:
+                    logging.warning(f"Dispute {dispute_id}: Could not use order_id from payload: {str(e)}")
+            
+            # Method 2: Try to find order by buyer_id and product_id (fallback)
+            if not order_to_restore and dispute.buyer_id and dispute.item_id:
+                try:
+                    buyer_obj_id = dispute.buyer_id.id if hasattr(dispute.buyer_id, 'id') else dispute.buyer_id
+                    product_obj_id = dispute.item_id.id if hasattr(dispute.item_id, 'id') else dispute.item_id
+                    
+                    # Find the most recent order for this buyer and product
+                    order_to_restore = Order.objects(
+                        buyer_id=buyer_obj_id,
+                        product_id=product_obj_id
+                    ).order_by('-created_at').first()
+                    
+                    if order_to_restore:
+                        logging.info(f"Dispute {dispute_id}: Restored missing order_id {order_to_restore.id} via fallback")
+                except Exception as e:
+                    logging.error(f"Dispute {dispute_id}: Error in fallback order lookup: {str(e)}", exc_info=True)
+            
+            # Restore the order_id if found
+            if order_to_restore:
+                dispute.order_id = order_to_restore
+            else:
+                logging.warning(f"Dispute {dispute_id}: Could not restore order_id before saving comment")
         
         # Create message
         dispute_message = DisputeMessage(
