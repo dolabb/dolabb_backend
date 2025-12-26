@@ -1201,8 +1201,44 @@ class DisputeService:
         seller = User.objects(id=dispute.seller_id.id).first()
         product = Product.objects(id=dispute.item_id.id).first()
         
+        # Debug: Check raw MongoDB document to see what's actually stored
+        import logging
+        try:
+            from mongoengine import connection
+            db = connection.get_db()
+            raw_dispute = db.disputes.find_one({'_id': dispute.id})
+            if raw_dispute:
+                raw_order_id = raw_dispute.get('order_id')
+                logging.info(f"Dispute {dispute_id}: Raw MongoDB order_id value: {raw_order_id}, type: {type(raw_order_id)}")
+        except Exception as e:
+            logging.warning(f"Dispute {dispute_id}: Could not read raw MongoDB document: {str(e)}")
+        
         # Safely get order information using helper method
         order, order_id, order_number = DisputeService._get_order_info(dispute.order_id, dispute_id)
+        
+        # Fallback: If order_id reference is missing or broken, try to find order by buyer and product
+        if not order and dispute.buyer_id and dispute.item_id:
+            try:
+                # Try to find order by buyer_id and product_id
+                buyer_obj_id = dispute.buyer_id.id if hasattr(dispute.buyer_id, 'id') else dispute.buyer_id
+                product_obj_id = dispute.item_id.id if hasattr(dispute.item_id, 'id') else dispute.item_id
+                
+                # Query for orders matching buyer and product
+                # Try to find the most recent order for this buyer and product
+                order = Order.objects(
+                    buyer_id=buyer_obj_id,
+                    product_id=product_obj_id
+                ).order_by('-created_at').first()
+                
+                if order:
+                    order_id = str(order.id)
+                    order_number = getattr(order, 'order_number', '') or ''
+                    logging.info(f"Dispute {dispute_id}: Found order {order_id} via fallback (buyer_id + product_id)")
+                else:
+                    logging.warning(f"Dispute {dispute_id}: Could not find order via fallback. buyer_id: {buyer_obj_id}, product_id: {product_obj_id}")
+            except Exception as e:
+                import logging
+                logging.error(f"Dispute {dispute_id}: Error in fallback order lookup: {str(e)}", exc_info=True)
         
         # Format messages (includes both buyer and admin comments)
         messages = []
