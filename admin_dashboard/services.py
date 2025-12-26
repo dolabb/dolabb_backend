@@ -620,23 +620,127 @@ class CashoutService:
     
     @staticmethod
     def approve_cashout(cashout_id, admin_id):
-        """Approve cashout request"""
+        """Approve cashout request and send payout via Moyasar"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         cashout = CashoutRequest.objects(id=cashout_id).first()
         if not cashout:
             raise ValueError("Cashout request not found")
         
+        # Check if already approved
+        if cashout.status == 'approved':
+            raise ValueError("Cashout request is already approved")
+        
+        # Get seller information
+        seller = User.objects(id=cashout.seller_id.id).first()
+        if not seller:
+            raise ValueError("Seller not found")
+        
+        # Try to process payout via Moyasar if payment method is Bank Transfer
+        payout_success = False
+        payout_error = None
+        moyasar_payout_id = None
+        
+        if cashout.payment_method == 'Bank Transfer' and cashout.account_details:
+            try:
+                from payments.services import MoyasarPaymentService
+                
+                # Parse account details
+                account_info = MoyasarPaymentService.parse_account_details(cashout.account_details)
+                
+                # Validate required fields
+                if not account_info.get('iban'):
+                    raise ValueError("IBAN or account number is required in account details")
+                if not account_info.get('name'):
+                    raise ValueError("Account holder name is required in account details")
+                
+                # Convert amount to smallest currency unit (cents/fils)
+                # Assuming currency is SAR (default)
+                currency = 'SAR'  # You can add currency field to CashoutRequest if needed
+                amount_in_cents = int(cashout.amount * 100)
+                
+                # Build destination object
+                destination = {
+                    'type': 'bank',
+                    'iban': account_info['iban'],
+                    'name': account_info['name']
+                }
+                
+                # Add optional fields if available
+                if account_info.get('mobile'):
+                    destination['mobile'] = account_info['mobile']
+                if account_info.get('country'):
+                    destination['country'] = account_info['country']
+                if account_info.get('city'):
+                    destination['city'] = account_info['city']
+                
+                # Create metadata
+                metadata = {
+                    'cashout_id': str(cashout.id),
+                    'seller_id': str(cashout.seller_id.id),
+                    'seller_name': cashout.seller_name or seller.full_name,
+                    'payment_method': cashout.payment_method
+                }
+                
+                # Create payout via Moyasar
+                logger.info(f"Creating Moyasar payout for cashout {cashout_id}: {cashout.amount} {currency}")
+                payout_response = MoyasarPaymentService.create_payout(
+                    amount=amount_in_cents,
+                    currency=currency,
+                    destination=destination,
+                    purpose='seller_payout',
+                    metadata=metadata
+                )
+                
+                moyasar_payout_id = payout_response.get('id')
+                payout_status = payout_response.get('status', 'pending')
+                
+                logger.info(f"Moyasar payout created: {moyasar_payout_id}, status: {payout_status}")
+                
+                # Check if payout was successful
+                if payout_status in ['completed', 'paid', 'success']:
+                    payout_success = True
+                elif payout_status in ['pending', 'processing']:
+                    # Payout is processing, mark as approved but note it's pending
+                    payout_success = True
+                    logger.info(f"Payout is processing: {moyasar_payout_id}")
+                else:
+                    # Payout failed
+                    payout_error = f"Payout status: {payout_status}"
+                    logger.warning(f"Payout not successful: {payout_error}")
+                    
+            except ValueError as e:
+                # Validation error - don't approve the cashout
+                payout_error = str(e)
+                logger.error(f"Payout validation error: {payout_error}")
+                raise ValueError(f"Failed to process payout: {payout_error}")
+            except Exception as e:
+                # API error - log but don't fail the approval
+                payout_error = str(e)
+                logger.error(f"Moyasar payout API error: {payout_error}", exc_info=True)
+                # Continue with approval but mark the error
+        
+        # Update cashout status
         cashout.status = 'approved'
         cashout.reviewed_at = datetime.utcnow()
         cashout.reviewed_by = admin_id
+        if moyasar_payout_id:
+            cashout.moyasar_payout_id = moyasar_payout_id
+        if payout_error:
+            cashout.payout_error = payout_error
         cashout.save()
         
         # Send notification to seller
         try:
             from notifications.notification_helper import NotificationHelper
-            NotificationHelper.send_payout_sent(str(cashout.seller_id.id))
+            if payout_success:
+                NotificationHelper.send_payout_sent(str(cashout.seller_id.id))
+            else:
+                # Send notification that payout was approved but processing failed
+                NotificationHelper.send_payout_sent(str(cashout.seller_id.id))
         except Exception as e:
-            import logging
-            logging.error(f"Error sending payout notification: {str(e)}")
+            logger.error(f"Error sending payout notification: {str(e)}")
         
         return cashout
     
@@ -1015,6 +1119,8 @@ class DisputeService:
     @staticmethod
     def get_dispute_details(dispute_id, user_id=None, user_type=None):
         """Get dispute details"""
+        from products.models import Order
+        
         dispute = Dispute.objects(id=dispute_id).first()
         if not dispute:
             raise ValueError("Dispute not found")
@@ -1032,47 +1138,65 @@ class DisputeService:
         order = None
         order_id = ''
         order_number = ''
-        if dispute.order_id:
-            try:
-                # Try to get the order - handle both ReferenceField and direct ID access
-                # MongoDB ReferenceField stores ObjectId, but if document is deleted, accessing .id might fail
-                order_obj_id = None
-                if hasattr(dispute.order_id, 'id'):
-                    order_obj_id = dispute.order_id.id
-                elif hasattr(dispute.order_id, '__str__'):
-                    # Try to get ID as string and convert
-                    from bson import ObjectId
-                    try:
-                        order_obj_id = ObjectId(str(dispute.order_id))
-                    except:
-                        order_obj_id = None
-                else:
-                    order_obj_id = dispute.order_id
+        
+        try:
+            if dispute.order_id:
+                from bson import ObjectId
                 
-                if order_obj_id:
-                    order = Order.objects(id=order_obj_id).first()
-                    if order:
-                        order_id = str(order.id)
-                        order_number = order.order_number if hasattr(order, 'order_number') else ''
-                    else:
-                        # Order reference exists but order not found in database (dangling reference)
-                        import logging
-                        logging.warning(f"Dispute {dispute_id} has order_id reference {order_obj_id} but order not found in database (order may have been deleted)")
+                # Try multiple methods to get the order
+                # Method 1: If it's already a dereferenced Order object
+                if isinstance(dispute.order_id, Order):
+                    order = dispute.order_id
                 else:
-                    # order_id field exists but we can't extract a valid ID
+                    # Method 2: Extract ObjectId and query
+                    order_obj_id = None
+                    
+                    # Try different ways to get the ObjectId from ReferenceField
+                    # Check if it has a pk attribute (mongoengine ReferenceField)
+                    if hasattr(dispute.order_id, 'pk') and dispute.order_id.pk:
+                        order_obj_id = dispute.order_id.pk
+                    elif hasattr(dispute.order_id, 'id') and dispute.order_id.id:
+                        order_obj_id = dispute.order_id.id
+                    elif isinstance(dispute.order_id, ObjectId):
+                        order_obj_id = dispute.order_id
+                    elif isinstance(dispute.order_id, str):
+                        try:
+                            order_obj_id = ObjectId(dispute.order_id)
+                        except:
+                            pass
+                    else:
+                        # Try converting to string first, then to ObjectId
+                        try:
+                            order_obj_id = ObjectId(str(dispute.order_id))
+                        except:
+                            pass
+                    
+                    # Query the order
+                    if order_obj_id:
+                        order = Order.objects(id=order_obj_id).first()
+                    else:
+                        # Last resort: try querying directly with the raw value
+                        try:
+                            order = Order.objects(id=dispute.order_id).first()
+                        except:
+                            pass
+                
+                # Extract order_id and order_number if order was found
+                if order:
+                    order_id = str(order.id)
+                    order_number = getattr(order, 'order_number', '') or ''
+                else:
                     import logging
-                    logging.warning(f"Dispute {dispute_id} has order_id field but cannot extract valid order ID")
-            except (AttributeError, Exception) as e:
-                # Order reference is broken or order doesn't exist
+                    logging.warning(f"Dispute {dispute_id}: Order not found. order_id type: {type(dispute.order_id)}, value: {dispute.order_id}")
+            else:
                 import logging
-                logging.warning(f"Error fetching order for dispute {dispute_id}: {str(e)}")
-                order = None
-                order_id = ''
-                order_number = ''
-        else:
-            # dispute.order_id is None or empty - this shouldn't happen as it's required=True
+                logging.warning(f"Dispute {dispute_id} has no order_id reference")
+        except Exception as e:
             import logging
-            logging.warning(f"Dispute {dispute_id} has no order_id reference (this is unexpected as order_id is required)")
+            logging.error(f"Error fetching order for dispute {dispute_id}: {str(e)}", exc_info=True)
+            order = None
+            order_id = ''
+            order_number = ''
         
         # Format messages (includes both buyer and admin comments)
         messages = []
@@ -1111,6 +1235,8 @@ class DisputeService:
         return {
             'id': str(dispute.id),
             'caseNumber': dispute.case_number,
+            'orderId': order_id,  # Add orderId at top level for easier access
+            'orderNumber': order_number,  # Add orderNumber at top level for easier access
             'type': dispute.dispute_type,
             'buyer': {
                 'id': str(dispute.buyer_id.id),
