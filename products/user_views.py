@@ -933,20 +933,27 @@ def upload_dispute_evidence(request, dispute_id):
                 'error': 'File size too large. Maximum size is 10MB'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Get file extension for validation and filename generation
+        file_extension = os.path.splitext(file.name)[1]
+        file_extension_lower = file_extension.lower()
+        
         # Validate file type - allow images and documents
         allowed_image_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
         allowed_doc_types = ['application/pdf', 'application/msword', 
                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
         allowed_types = allowed_image_types + allowed_doc_types
         
-        if file.content_type not in allowed_types:
+        # Also check file extension as fallback if content_type is not reliable
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx']
+        
+        # Validate by content type or extension
+        if file.content_type not in allowed_types and file_extension_lower not in allowed_extensions:
             return Response({
                 'success': False,
-                'error': 'Invalid file type. Allowed types: Images (JPEG, PNG, GIF, WebP) or Documents (PDF, DOC, DOCX)'
+                'error': f'Invalid file type. Allowed types: Images (JPEG, PNG, GIF, WebP) or Documents (PDF, DOC, DOCX). Received: {file.content_type}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Generate unique filename
-        file_extension = os.path.splitext(file.name)[1]
         unique_filename = f"dispute_evidence_{dispute_id}_{uuid.uuid4().hex[:12]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
         
         # Try VPS upload first if enabled
@@ -958,6 +965,8 @@ def upload_dispute_evidence(request, dispute_id):
             try:
                 from storage.vps_helper import upload_file_to_vps
                 file_bytes = file.read()
+                # Reset file pointer after reading for VPS upload
+                file.seek(0)
                 success, result = upload_file_to_vps(
                     file_bytes,
                     f'uploads/disputes/{dispute_id}',
@@ -976,6 +985,9 @@ def upload_dispute_evidence(request, dispute_id):
             os.makedirs(upload_dir, exist_ok=True)
             
             file_path = os.path.join(upload_dir, unique_filename)
+            
+            # Reset file pointer before saving locally
+            file.seek(0)
             
             # Save file
             with open(file_path, 'wb+') as destination:
@@ -1036,8 +1048,11 @@ def upload_dispute_evidence(request, dispute_id):
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
         import logging
-        logging.error(f"Error uploading dispute evidence: {str(e)}", exc_info=True)
+        import traceback
+        error_message = str(e)
+        error_traceback = traceback.format_exc()
+        logging.error(f"Error uploading dispute evidence for dispute {dispute_id}: {error_message}\n{error_traceback}")
         return Response({
             'success': False,
-            'error': str(e)
+            'error': f'Failed to upload evidence: {error_message}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
