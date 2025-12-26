@@ -935,6 +935,47 @@ def upload_dispute_evidence(request, dispute_id):
         
         # Get file extension for validation and filename generation
         file_extension = os.path.splitext(file.name)[1]
+        
+        # Optimize image if it's an image file (after validation)
+        file_bytes = None
+        optimized = False
+        if file.content_type and file.content_type.startswith('image/'):
+            try:
+                from storage.image_optimizer import optimize_image, should_optimize_image
+                
+                # Read file once
+                file.seek(0)
+                original_bytes = file.read()
+                file.seek(0)
+                
+                # Optimize if file is large enough
+                if should_optimize_image(len(original_bytes), file.content_type):
+                    optimized_bytes, orig_size, opt_size, format_used = optimize_image(
+                        original_bytes,
+                        max_width=1920,  # Max width for evidence
+                        max_height=1920,  # Max height for evidence
+                        quality=85  # Good quality with good compression
+                    )
+                    
+                    # Use optimized version if it's smaller
+                    if opt_size < orig_size:
+                        file_bytes = optimized_bytes
+                        optimized = True
+                        import logging
+                        logging.info(f"Image optimized: {orig_size} -> {opt_size} bytes ({((1-opt_size/orig_size)*100):.1f}% reduction)")
+                    else:
+                        file_bytes = original_bytes
+                else:
+                    file_bytes = original_bytes
+            except Exception as e:
+                import logging
+                logging.warning(f"Image optimization failed, using original: {str(e)}")
+                file.seek(0)
+                file_bytes = file.read()
+        else:
+            # For non-images, read normally
+            file.seek(0)
+            file_bytes = file.read()
         file_extension_lower = file_extension.lower()
         
         # Validate file type - allow images and documents
@@ -964,11 +1005,10 @@ def upload_dispute_evidence(request, dispute_id):
         if vps_enabled:
             try:
                 from storage.vps_helper import upload_file_to_vps
-                file_bytes = file.read()
-                # Reset file pointer after reading for VPS upload
-                file.seek(0)
+                # Use optimized bytes if available, otherwise read from file
+                upload_bytes = file_bytes if file_bytes is not None else file.read()
                 success, result = upload_file_to_vps(
-                    file_bytes,
+                    upload_bytes,
                     f'uploads/disputes/{dispute_id}',
                     unique_filename
                 )
@@ -986,13 +1026,18 @@ def upload_dispute_evidence(request, dispute_id):
             
             file_path = os.path.join(upload_dir, unique_filename)
             
-            # Reset file pointer before saving locally
-            file.seek(0)
-            
-            # Save file
-            with open(file_path, 'wb+') as destination:
-                for chunk in file.chunks():
-                    destination.write(chunk)
+            # Use optimized bytes if available, otherwise read from file
+            if file_bytes is not None:
+                # Save optimized bytes
+                with open(file_path, 'wb+') as destination:
+                    destination.write(file_bytes)
+            else:
+                # Reset file pointer before saving locally
+                file.seek(0)
+                # Save file
+                with open(file_path, 'wb+') as destination:
+                    for chunk in file.chunks():
+                        destination.write(chunk)
             
             # Generate absolute URL
             media_url = settings.MEDIA_URL.rstrip('/')
