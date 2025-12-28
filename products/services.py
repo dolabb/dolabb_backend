@@ -1050,10 +1050,14 @@ class ProductService:
                 key=lambda x: (
                     x['sales_count'], 
                     getattr(x['product'], 'likes_count', 0) or 0,
-                    x['product'].created_at
+                    x['product'].created_at if x['product'].created_at else datetime.min
                 ), 
                 reverse=True
             )
+            
+            # Ensure we have products to return
+            if not products_with_sales:
+                return []
             
             # Filter out products with 0 sales if there are products with sales
             # This ensures trending shows actual best-sellers, not just newest products
@@ -1072,7 +1076,7 @@ class ProductService:
                     remaining_products.sort(
                         key=lambda x: (
                             getattr(x['product'], 'likes_count', 0) or 0,
-                            x['product'].created_at
+                            x['product'].created_at if x['product'].created_at else datetime.min
                         ),
                         reverse=True
                     )
@@ -1081,10 +1085,11 @@ class ProductService:
             else:
                 # If no products have sales yet, use products sorted by likes_count + created_at
                 # This differentiates trending from "newly listed" (which only sorts by created_at)
+                # Note: products_with_sales is already sorted, but we need to re-sort by different criteria
                 products_with_sales.sort(
                     key=lambda x: (
                         getattr(x['product'], 'likes_count', 0) or 0,
-                        x['product'].created_at
+                        x['product'].created_at if x['product'].created_at else datetime.min
                     ), 
                     reverse=True
                 )

@@ -660,6 +660,19 @@ def get_featured_products(request):
         products_list = []
         for product in products:
             seller = User.objects(id=product.seller_id.id).first()
+            
+            # Get purchase count (completed orders) for this product
+            purchase_count = 0
+            try:
+                from products.models import Order
+                purchase_count = Order.objects(
+                    product_id=product.id,
+                    payment_status='completed'
+                ).count()
+            except Exception as e:
+                import logging
+                logging.warning(f"Error counting purchases for product {product.id}: {str(e)}")
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -667,6 +680,7 @@ def get_featured_products(request):
                 'price': product.price,
                 'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
+                'purchaseCount': purchase_count,  # Add purchase count
                 'seller': {
                     'id': str(seller.id) if seller else '',
                     'username': seller.username if seller else '',
