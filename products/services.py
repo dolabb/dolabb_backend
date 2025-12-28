@@ -1044,11 +1044,52 @@ class ProductService:
                         'sales_count': 0
                     })
             
-            # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
-            products_with_sales.sort(key=lambda x: (x['sales_count'], x['product'].created_at), reverse=True)
+            # Sort by sales count (descending), then by likes_count (descending), then by created_at (newest first) for tie-breaking
+            # This ensures trending products are different from "newly listed" products
+            products_with_sales.sort(
+                key=lambda x: (
+                    x['sales_count'], 
+                    getattr(x['product'], 'likes_count', 0) or 0,
+                    x['product'].created_at
+                ), 
+                reverse=True
+            )
             
-            # Return products with specified limit (default: 5)
-            trending_products = [item['product'] for item in products_with_sales[:limit]]
+            # Filter out products with 0 sales if there are products with sales
+            # This ensures trending shows actual best-sellers, not just newest products
+            products_with_actual_sales = [item for item in products_with_sales if item['sales_count'] > 0]
+            if products_with_actual_sales:
+                # If we have products with sales, prioritize them
+                # But if we don't have enough, fill with products sorted by likes_count
+                trending_list = products_with_actual_sales[:limit]
+                if len(trending_list) < limit:
+                    # Fill remaining slots with products sorted by likes_count (excluding already selected)
+                    selected_ids = {item['product'].id for item in trending_list}
+                    remaining_products = [
+                        item for item in products_with_sales 
+                        if item['product'].id not in selected_ids
+                    ]
+                    remaining_products.sort(
+                        key=lambda x: (
+                            getattr(x['product'], 'likes_count', 0) or 0,
+                            x['product'].created_at
+                        ),
+                        reverse=True
+                    )
+                    trending_list.extend(remaining_products[:limit - len(trending_list)])
+                trending_products = [item['product'] for item in trending_list]
+            else:
+                # If no products have sales yet, use products sorted by likes_count + created_at
+                # This differentiates trending from "newly listed" (which only sorts by created_at)
+                products_with_sales.sort(
+                    key=lambda x: (
+                        getattr(x['product'], 'likes_count', 0) or 0,
+                        x['product'].created_at
+                    ), 
+                    reverse=True
+                )
+                trending_products = [item['product'] for item in products_with_sales[:limit]]
+            
             return trending_products
         except Exception as e:
             # If there's any error, log it and return empty list or fallback to recent products
