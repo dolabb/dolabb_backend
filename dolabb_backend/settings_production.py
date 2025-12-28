@@ -71,6 +71,8 @@ ROOT_URLCONF = 'dolabb_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,  # Enable template discovery in installed apps
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -177,6 +179,10 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': int(os.getenv('PAGE_DEFAULT_LIMIT', 10)),
     'EXCEPTION_HANDLER': 'dolabb_backend.utils.custom_exception_handler',
+    # Disable browsable API in production for better security and performance
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
 }
 
 # CORS Configuration - Update with your frontend domain

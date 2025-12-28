@@ -57,6 +57,8 @@ ROOT_URLCONF = 'dolabb_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,  # Enable template discovery in installed apps
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
