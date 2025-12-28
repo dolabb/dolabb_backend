@@ -661,18 +661,6 @@ def get_featured_products(request):
         for product in products:
             seller = User.objects(id=product.seller_id.id).first()
             
-            # Get purchase count (completed orders) for this product
-            purchase_count = 0
-            try:
-                from products.models import Order
-                purchase_count = Order.objects(
-                    product_id=product.id,
-                    payment_status='completed'
-                ).count()
-            except Exception as e:
-                import logging
-                logging.warning(f"Error counting purchases for product {product.id}: {str(e)}")
-            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -680,7 +668,6 @@ def get_featured_products(request):
                 'price': product.price,
                 'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
-                'purchaseCount': purchase_count,  # Add purchase count
                 'seller': {
                     'id': str(seller.id) if seller else '',
                     'username': seller.username if seller else '',
@@ -712,11 +699,14 @@ def get_trending_products(request):
         except (ValueError, TypeError):
             limit = 5
         
-        products = ProductService.get_trending_products(user_id=user_id, limit=limit)
+        products_with_counts = ProductService.get_trending_products(user_id=user_id, limit=limit)
         
         products_list = []
-        for product in products:
+        for item in products_with_counts:
             try:
+                product = item['product']
+                purchase_count = item['purchase_count']
+                
                 seller = None
                 if product.seller_id:
                     seller = User.objects(id=product.seller_id.id).first()
@@ -728,6 +718,7 @@ def get_trending_products(request):
                     'price': product.price,
                     'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                     'images': product.images if hasattr(product, 'images') and product.images else [],
+                    'purchaseCount': purchase_count,
                     'seller': {
                         'id': str(seller.id) if seller else '',
                         'username': seller.username if seller else '',
@@ -737,7 +728,7 @@ def get_trending_products(request):
             except Exception as e:
                 # Skip products that cause errors, but log them
                 import logging
-                logging.warning(f"Error processing product {getattr(product, 'id', 'unknown')} in trending products: {str(e)}")
+                logging.warning(f"Error processing product {getattr(item.get('product', {}), 'id', 'unknown')} in trending products: {str(e)}")
                 continue
         
         return Response({

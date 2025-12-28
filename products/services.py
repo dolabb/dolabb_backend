@@ -1044,77 +1044,49 @@ class ProductService:
                         'sales_count': 0
                     })
             
-            # Sort by sales count (descending), then by likes_count (descending), then by created_at (newest first) for tie-breaking
-            # This ensures trending products are different from "newly listed" products
-            products_with_sales.sort(
+            # Filter out products with 0 purchase count - only show products that have been purchased
+            products_with_actual_sales = [item for item in products_with_sales if item['sales_count'] > 0]
+            
+            if not products_with_actual_sales:
+                # If no products have been purchased, return empty list
+                return []
+            
+            # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
+            # If multiple products have the same purchase count, show the newest one
+            products_with_actual_sales.sort(
                 key=lambda x: (
                     x['sales_count'], 
-                    getattr(x['product'], 'likes_count', 0) or 0,
                     x['product'].created_at if x['product'].created_at else datetime.min
                 ), 
                 reverse=True
             )
             
-            # Ensure we have products to return
-            if not products_with_sales:
-                return []
+            # Group products by purchase count and select only one product per purchase count (newest)
+            # This ensures we don't show multiple products with the same purchase count
+            seen_purchase_counts = {}
+            unique_products = []
             
-            # Filter out products with 0 sales if there are products with sales
-            # This ensures trending shows actual best-sellers, not just newest products
-            products_with_actual_sales = [item for item in products_with_sales if item['sales_count'] > 0]
-            if products_with_actual_sales:
-                # If we have products with sales, prioritize them
-                # But if we don't have enough, fill with products sorted by likes_count
-                trending_list = products_with_actual_sales[:limit]
-                if len(trending_list) < limit:
-                    # Fill remaining slots with products sorted by likes_count (excluding already selected)
-                    selected_ids = {item['product'].id for item in trending_list}
-                    remaining_products = [
-                        item for item in products_with_sales 
-                        if item['product'].id not in selected_ids
-                    ]
-                    remaining_products.sort(
-                        key=lambda x: (
-                            getattr(x['product'], 'likes_count', 0) or 0,
-                            x['product'].created_at if x['product'].created_at else datetime.min
-                        ),
-                        reverse=True
-                    )
-                    trending_list.extend(remaining_products[:limit - len(trending_list)])
-                trending_products = [item['product'] for item in trending_list]
-            else:
-                # If no products have sales yet, use products sorted by likes_count + created_at
-                # This differentiates trending from "newly listed" (which only sorts by created_at)
-                # Note: products_with_sales is already sorted, but we need to re-sort by different criteria
-                products_with_sales.sort(
-                    key=lambda x: (
-                        getattr(x['product'], 'likes_count', 0) or 0,
-                        x['product'].created_at if x['product'].created_at else datetime.min
-                    ), 
-                    reverse=True
-                )
-                trending_products = [item['product'] for item in products_with_sales[:limit]]
+            for item in products_with_actual_sales:
+                purchase_count = item['sales_count']
+                # If we haven't seen this purchase count yet, add it
+                # Since list is sorted by purchase_count desc then created_at desc, first one is newest
+                if purchase_count not in seen_purchase_counts:
+                    seen_purchase_counts[purchase_count] = True
+                    unique_products.append({
+                        'product': item['product'],
+                        'purchase_count': purchase_count
+                    })
+                    # Stop if we have enough products
+                    if len(unique_products) >= limit:
+                        break
             
-            return trending_products
+            return unique_products
         except Exception as e:
-            # If there's any error, log it and return empty list or fallback to recent products
+            # If there's any error, log it and return empty list
             import logging
             logging.error(f"Error in get_trending_products: {str(e)}")
-            # Fallback: return most recent products if trending calculation fails
-            try:
-                if user_id:
-                    try:
-                        user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-                        fallback_query = Product.objects(
-                            Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
-                        ).order_by('-created_at')
-                    except:
-                        fallback_query = Product.objects(status='active', approved=True).order_by('-created_at')
-                else:
-                    fallback_query = Product.objects(status='active', approved=True).order_by('-created_at')
-                return list(fallback_query.limit(limit))
-            except:
-                return []
+            # Return empty list on error - trending products should only show products with purchases
+            return []
     
     @staticmethod
     def get_all_categories_formatted():
