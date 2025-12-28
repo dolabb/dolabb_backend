@@ -244,20 +244,122 @@ class AffiliateService:
     
     @staticmethod
     def approve_payout(payout_id, admin_id):
-        """Approve affiliate payout - move amount from pending to paid earnings"""
+        """Approve affiliate payout - move amount from pending to paid earnings and send payout via Moyasar"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         payout = AffiliatePayoutRequest.objects(id=payout_id).first()
         if not payout:
             raise ValueError("Payout request not found")
         
+        # Check if already approved
+        if payout.status == 'approved':
+            raise ValueError("Payout request is already approved")
+        
+        # Get affiliate information
+        affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
+        if not affiliate:
+            raise ValueError("Affiliate not found")
+        
+        # Try to process payout via Moyasar if payment method is Bank Transfer
+        payout_success = False
+        payout_error = None
+        moyasar_payout_id = None
+        
+        if payout.payment_method == 'Bank Transfer' and payout.account_details:
+            try:
+                from payments.services import MoyasarPaymentService
+                
+                # Parse account details
+                account_info = MoyasarPaymentService.parse_account_details(payout.account_details)
+                
+                # Validate required fields
+                if not account_info.get('iban'):
+                    raise ValueError("IBAN or account number is required in account details")
+                if not account_info.get('name'):
+                    raise ValueError("Account holder name is required in account details")
+                
+                # Get currency (default to SAR)
+                currency = payout.currency if hasattr(payout, 'currency') and payout.currency else 'SAR'
+                
+                # Convert amount to smallest currency unit (cents/fils)
+                amount_in_cents = int(payout.amount * 100)
+                
+                # Build destination object
+                destination = {
+                    'type': 'bank',
+                    'iban': account_info['iban'],
+                    'name': account_info['name']
+                }
+                
+                # Add optional fields if available
+                if account_info.get('mobile'):
+                    destination['mobile'] = account_info['mobile']
+                if account_info.get('country'):
+                    destination['country'] = account_info['country']
+                if account_info.get('city'):
+                    destination['city'] = account_info['city']
+                
+                # Create metadata
+                metadata = {
+                    'payout_id': str(payout.id),
+                    'affiliate_id': str(payout.affiliate_id.id),
+                    'affiliate_name': payout.affiliate_name or affiliate.full_name,
+                    'payment_method': payout.payment_method,
+                    'currency': currency
+                }
+                
+                # Create payout via Moyasar
+                logger.info(f"Creating Moyasar payout for affiliate payout {payout_id}: {payout.amount} {currency}")
+                payout_response = MoyasarPaymentService.create_payout(
+                    amount=amount_in_cents,
+                    currency=currency,
+                    destination=destination,
+                    purpose='affiliate_payout',
+                    metadata=metadata
+                )
+                
+                moyasar_payout_id = payout_response.get('id')
+                payout_status = payout_response.get('status', 'pending')
+                
+                logger.info(f"Moyasar payout created: {moyasar_payout_id}, status: {payout_status}")
+                
+                # Check if payout was successful
+                if payout_status in ['completed', 'paid', 'success']:
+                    payout_success = True
+                elif payout_status in ['pending', 'processing']:
+                    # Payout is processing, mark as approved but note it's pending
+                    payout_success = True
+                    logger.info(f"Payout is processing: {moyasar_payout_id}")
+                else:
+                    # Payout failed
+                    payout_error = f"Payout status: {payout_status}"
+                    logger.warning(f"Payout not successful: {payout_error}")
+                    
+            except ValueError as e:
+                # Validation error - don't approve the payout
+                payout_error = str(e)
+                logger.error(f"Payout validation error: {payout_error}")
+                raise ValueError(f"Failed to process payout: {payout_error}")
+            except Exception as e:
+                # API error - log but don't fail the approval
+                payout_error = str(e)
+                logger.error(f"Moyasar payout API error: {payout_error}", exc_info=True)
+                # Continue with approval but mark the error
+        
+        # Update payout status
         payout.status = 'approved'
         payout.reviewed_at = datetime.utcnow()
         payout.reviewed_by = admin_id
+        if moyasar_payout_id:
+            payout.moyasar_payout_id = moyasar_payout_id
+        if payout_error:
+            payout.payout_error = payout_error
         payout.save()
         
         # Update affiliate earnings
         # Note: Amount was already deducted from pending_earnings when request was created
         # So we just need to add it to paid_earnings for the specific currency
-        affiliate = Affiliate.objects(id=payout.affiliate_id.id).first()
         if affiliate:
             currency = payout.currency if hasattr(payout, 'currency') and payout.currency else 'SAR'
             
@@ -277,10 +379,13 @@ class AffiliateService:
         # Send notification to affiliate
         try:
             from notifications.notification_helper import NotificationHelper
-            NotificationHelper.send_payout_sent(str(payout.affiliate_id.id), 'affiliate')
+            if payout_success:
+                NotificationHelper.send_payout_sent(str(payout.affiliate_id.id), 'affiliate')
+            else:
+                # Send notification that payout was approved but processing failed
+                NotificationHelper.send_payout_sent(str(payout.affiliate_id.id), 'affiliate')
         except Exception as e:
-            import logging
-            logging.error(f"Error sending affiliate payout notification: {str(e)}")
+            logger.error(f"Error sending affiliate payout notification: {str(e)}")
         
         return payout
     

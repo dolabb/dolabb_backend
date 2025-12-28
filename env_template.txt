@@ -19,6 +19,8 @@ OTP_EXPIRY_SECONDS=300
 # Moyasar Payment Gateway
 MOYASAR_SECRET_KEY=your_moyasar_secret_key_here
 MOYASAR_PUBLISHABLE_KEY=your_moyasar_publishable_key_here
+MOYASAR_PAYOUT_API_URL=https://api.moyasar.com/v1/payouts
+MOYASAR_PAYOUT_SOURCE_ID=your_moyasar_payout_source_id_here
 
 # Redis Configuration (Upstash Redis)
 # Use full Redis URL for Upstash

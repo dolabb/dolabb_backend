@@ -39,6 +39,8 @@ class AffiliatePayoutRequest(Document):
     rejection_reason = StringField()
     reviewed_at = DateTimeField()
     reviewed_by = StringField()
+    moyasar_payout_id = StringField()  # Moyasar payout transaction ID
+    payout_error = StringField()  # Error message if payout fails
     
     meta = {
         'collection': 'affiliate_payout_requests',

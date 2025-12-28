@@ -209,6 +209,8 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://dolabb.com')
 MOYASAR_PUBLISHABLE_KEY = os.getenv('MOYASAR_PUBLISHABLE_KEY', '')
 MOYASAR_SECRET_KEY = os.getenv('MOYASAR_SECRET_KEY', '')
 MOYASAR_API_URL = 'https://api.moyasar.com/v1/payments'
+MOYASAR_PAYOUT_API_URL = os.getenv('MOYASAR_PAYOUT_API_URL', 'https://api.moyasar.com/v1/payouts')
+MOYASAR_PAYOUT_SOURCE_ID = os.getenv('MOYASAR_PAYOUT_SOURCE_ID', '')  # Payout account source ID
 
 # Channels Configuration (WebSockets)
 CHANNEL_LAYERS = {

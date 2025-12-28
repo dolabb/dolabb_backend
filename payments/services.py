@@ -307,4 +307,173 @@ class MoyasarPaymentService:
         """Verify webhook signature (if Moyasar provides webhook verification)"""
         # Implement webhook verification if needed
         return True
+    
+    @staticmethod
+    def create_payout(amount, currency, destination, purpose='payout', metadata=None):
+        """
+        Create a payout via Moyasar API
+        
+        Args:
+            amount: Payout amount in the smallest currency unit (e.g., for 1.00 SAR, use 100)
+            currency: Currency code (SAR, USD, etc.)
+            destination: Dictionary containing destination details:
+                - type: 'bank' or 'wallet'
+                - iban: IBAN for bank transfers (required for type='bank')
+                - name: Beneficiary name (required)
+                - mobile: Mobile number (optional)
+                - country: Country code (optional)
+                - city: City name (optional)
+            purpose: Purpose of the payout (default: 'payout')
+            metadata: Additional metadata (optional)
+        
+        Returns:
+            Dictionary containing Moyasar payout response
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Check if required settings are available
+        if not hasattr(settings, 'MOYASAR_SECRET_KEY') or not settings.MOYASAR_SECRET_KEY:
+            raise ValueError(
+                "MOYASAR_SECRET_KEY setting is missing. "
+                "Please add MOYASAR_SECRET_KEY to your environment variables."
+            )
+        
+        # Get payout API URL (default to standard Moyasar API)
+        payout_api_url = getattr(settings, 'MOYASAR_PAYOUT_API_URL', 'https://api.moyasar.com/v1/payouts')
+        
+        # Get payout source ID (required for payouts)
+        payout_source_id = getattr(settings, 'MOYASAR_PAYOUT_SOURCE_ID', None)
+        if not payout_source_id:
+            raise ValueError(
+                "MOYASAR_PAYOUT_SOURCE_ID setting is missing. "
+                "Please add MOYASAR_PAYOUT_SOURCE_ID to your environment variables. "
+                "This is the ID of your payout account in Moyasar."
+            )
+        
+        url = payout_api_url
+        
+        headers = {
+            'Authorization': f'Bearer {settings.MOYASAR_SECRET_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Build payload
+        payload = {
+            'source_id': payout_source_id,
+            'amount': int(amount),
+            'currency': currency,
+            'purpose': purpose,
+            'destination': destination,
+        }
+        
+        if metadata:
+            payload['metadata'] = metadata
+        
+        try:
+            logger.info(f"Creating Moyasar payout: {amount} {currency} to {destination.get('name', 'N/A')}")
+            response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            payout_data = response.json()
+            logger.info(f"Moyasar payout created successfully: {payout_data.get('id')}")
+            return payout_data
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Payout creation failed: {str(e)}"
+            if e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    error_msg = error_data.get('message', error_msg)
+                    logger.error(f"Moyasar payout error: {error_data}")
+                except:
+                    error_msg = f"Payout creation failed: {e.response.text}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Payout creation failed: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+    
+    @staticmethod
+    def parse_account_details(account_details_str):
+        """
+        Parse account details string to extract bank account information.
+        Supports both JSON format and plain text format.
+        
+        Args:
+            account_details_str: String containing account details (JSON or plain text)
+        
+        Returns:
+            Dictionary with parsed account details:
+                - iban: IBAN number
+                - name: Account holder name
+                - mobile: Mobile number (optional)
+                - country: Country code (optional, defaults to 'SA' for Saudi Arabia)
+                - city: City name (optional)
+        """
+        import json
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if not account_details_str:
+            raise ValueError("Account details are required for payout")
+        
+        # Try to parse as JSON first
+        try:
+            account_data = json.loads(account_details_str)
+            if isinstance(account_data, dict):
+                # Extract IBAN (check multiple possible keys)
+                iban = (
+                    account_data.get('iban') or 
+                    account_data.get('IBAN') or 
+                    account_data.get('account_number') or 
+                    account_data.get('accountNumber') or
+                    account_data.get('bank_account') or
+                    account_data.get('bankAccount')
+                )
+                
+                # Extract name
+                name = (
+                    account_data.get('name') or 
+                    account_data.get('account_holder') or 
+                    account_data.get('accountHolder') or
+                    account_data.get('holder_name') or
+                    account_data.get('holderName')
+                )
+                
+                # Extract optional fields
+                mobile = account_data.get('mobile') or account_data.get('phone')
+                country = account_data.get('country') or account_data.get('country_code') or 'SA'
+                city = account_data.get('city')
+                
+                return {
+                    'iban': iban,
+                    'name': name,
+                    'mobile': mobile,
+                    'country': country,
+                    'city': city
+                }
+        except json.JSONDecodeError:
+            # Not JSON, treat as plain text
+            logger.info("Account details not in JSON format, parsing as plain text")
+            pass
+        
+        # If not JSON or parsing failed, treat as plain text
+        # Assume the string might contain IBAN or account number
+        # For plain text, we'll try to extract IBAN pattern (SA followed by 22 digits)
+        import re
+        iban_match = re.search(r'SA\d{22}', account_details_str.replace(' ', '').upper())
+        iban = iban_match.group(0) if iban_match else account_details_str.strip()
+        
+        # For plain text, we'll use the full string as IBAN and try to extract name
+        # This is a fallback - ideally account_details should be in JSON format
+        lines = account_details_str.strip().split('\n')
+        name = lines[0] if lines else 'Account Holder'
+        
+        return {
+            'iban': iban,
+            'name': name,
+            'mobile': None,
+            'country': 'SA',
+            'city': None
+        }
 
