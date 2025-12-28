@@ -641,13 +641,21 @@ def unsave_product(request, product_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_featured_products(request):
-    """Get featured products - returns 4 most recent products"""
+    """Get featured products - returns most recent products (default: 5, can be customized via ?limit=5)"""
     try:
         user_id = None
         if hasattr(request.user, 'id'):
             user_id = str(request.user.id)
         
-        products = ProductService.get_featured_products(user_id=user_id)
+        # Get limit from query parameter, default to 5
+        try:
+            limit = int(request.query_params.get('limit', 5))
+            # Ensure limit is positive and reasonable (max 50)
+            limit = max(1, min(limit, 50))
+        except (ValueError, TypeError):
+            limit = 5
+        
+        products = ProductService.get_featured_products(user_id=user_id, limit=limit)
         
         products_list = []
         for product in products:
@@ -676,13 +684,21 @@ def get_featured_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trending_products(request):
-    """Get trending products - returns 4 best-selling products"""
+    """Get trending products - returns best-selling products (default: 5, can be customized via ?limit=5)"""
     try:
         user_id = None
         if hasattr(request.user, 'id'):
             user_id = str(request.user.id)
         
-        products = ProductService.get_trending_products(user_id=user_id)
+        # Get limit from query parameter, default to 5
+        try:
+            limit = int(request.query_params.get('limit', 5))
+            # Ensure limit is positive and reasonable (max 50)
+            limit = max(1, min(limit, 50))
+        except (ValueError, TypeError):
+            limit = 5
+        
+        products = ProductService.get_trending_products(user_id=user_id, limit=limit)
         
         products_list = []
         for product in products:

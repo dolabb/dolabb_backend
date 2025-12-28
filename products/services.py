@@ -978,8 +978,8 @@ class ProductService:
         return cart_items, total_amount
     
     @staticmethod
-    def get_featured_products(user_id=None):
-        """Get featured products - shows 4 most recent products"""
+    def get_featured_products(user_id=None, limit=5):
+        """Get featured products - shows most recent products (default: 5)"""
         from mongoengine import Q
         if user_id:
             from bson import ObjectId
@@ -992,13 +992,13 @@ class ProductService:
                 query = Product.objects(status='active', approved=True).order_by('-created_at')
         else:
             query = Product.objects(status='active', approved=True).order_by('-created_at')
-        # Always return first 4 products (no pagination)
-        products = query.limit(4)
+        # Return products with specified limit (default: 5)
+        products = query.limit(limit)
         return products
     
     @staticmethod
-    def get_trending_products(user_id=None):
-        """Get trending products - shows 4 best-selling products (most orders)"""
+    def get_trending_products(user_id=None, limit=5):
+        """Get trending products - shows best-selling products (most orders, default: 5)"""
         from mongoengine import Q
         from products.models import Order
         
@@ -1033,8 +1033,8 @@ class ProductService:
         # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
         products_with_sales.sort(key=lambda x: (x['sales_count'], x['product'].created_at), reverse=True)
         
-        # Return first 4 products
-        trending_products = [item['product'] for item in products_with_sales[:4]]
+        # Return products with specified limit (default: 5)
+        trending_products = [item['product'] for item in products_with_sales[:limit]]
         return trending_products
     
     @staticmethod
