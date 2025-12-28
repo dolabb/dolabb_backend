@@ -1001,41 +1001,74 @@ class ProductService:
         """Get trending products - shows best-selling products (most orders, default: 5)"""
         from mongoengine import Q
         from products.models import Order
+        from bson import ObjectId
         
-        # Get base query for active products
-        if user_id:
-            from bson import ObjectId
-            try:
-                user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
-                base_query = Product.objects(
-                    Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
-                )
-            except:
+        try:
+            # Get base query for active products
+            if user_id:
+                try:
+                    user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                    base_query = Product.objects(
+                        Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
+                    )
+                except:
+                    base_query = Product.objects(status='active', approved=True)
+            else:
                 base_query = Product.objects(status='active', approved=True)
-        else:
-            base_query = Product.objects(status='active', approved=True)
-        
-        # Get all active products and calculate sales count for each
-        all_products = base_query.all()
-        
-        # Calculate sales count (completed orders) for each product
-        products_with_sales = []
-        for product in all_products:
-            sales_count = Order.objects(
-                product_id=product.id,
-                payment_status='completed'
-            ).count()
-            products_with_sales.append({
-                'product': product,
-                'sales_count': sales_count
-            })
-        
-        # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
-        products_with_sales.sort(key=lambda x: (x['sales_count'], x['product'].created_at), reverse=True)
-        
-        # Return products with specified limit (default: 5)
-        trending_products = [item['product'] for item in products_with_sales[:limit]]
-        return trending_products
+            
+            # Get all active products and calculate sales count for each
+            all_products = list(base_query.all())
+            
+            if not all_products:
+                # If no products found, return empty list
+                return []
+            
+            # Calculate sales count (completed orders) for each product
+            products_with_sales = []
+            for product in all_products:
+                try:
+                    sales_count = Order.objects(
+                        product_id=product.id,
+                        payment_status='completed'
+                    ).count()
+                    products_with_sales.append({
+                        'product': product,
+                        'sales_count': sales_count
+                    })
+                except Exception as e:
+                    # If error counting orders for a product, set sales_count to 0
+                    import logging
+                    logging.warning(f"Error counting orders for product {product.id}: {str(e)}")
+                    products_with_sales.append({
+                        'product': product,
+                        'sales_count': 0
+                    })
+            
+            # Sort by sales count (descending), then by created_at (newest first) for tie-breaking
+            products_with_sales.sort(key=lambda x: (x['sales_count'], x['product'].created_at), reverse=True)
+            
+            # Return products with specified limit (default: 5)
+            trending_products = [item['product'] for item in products_with_sales[:limit]]
+            return trending_products
+        except Exception as e:
+            # If there's any error, log it and return empty list or fallback to recent products
+            import logging
+            logging.error(f"Error in get_trending_products: {str(e)}")
+            # Fallback: return most recent products if trending calculation fails
+            try:
+                if user_id:
+                    try:
+                        user_obj_id = ObjectId(user_id) if isinstance(user_id, str) else user_id
+                        fallback_query = Product.objects(
+                            Q(status='active') & (Q(approved=True) | (Q(seller_id=user_obj_id) & Q(approved=False)))
+                        ).order_by('-created_at')
+                    except:
+                        fallback_query = Product.objects(status='active', approved=True).order_by('-created_at')
+                else:
+                    fallback_query = Product.objects(status='active', approved=True).order_by('-created_at')
+                return list(fallback_query.limit(limit))
+            except:
+                return []
     
     @staticmethod
     def get_all_categories_formatted():

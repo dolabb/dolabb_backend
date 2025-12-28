@@ -702,25 +702,36 @@ def get_trending_products(request):
         
         products_list = []
         for product in products:
-            seller = User.objects(id=product.seller_id.id).first()
-            products_list.append({
-                'id': str(product.id),
-                'title': product.title,
-                'description': product.description,
-                'price': product.price,
-                'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
-                'images': product.images,
-                'seller': {
-                    'id': str(seller.id) if seller else '',
-                    'username': seller.username if seller else '',
-                    'profileImage': seller.profile_image if seller else ''
-                }
-            })
+            try:
+                seller = None
+                if product.seller_id:
+                    seller = User.objects(id=product.seller_id.id).first()
+                
+                products_list.append({
+                    'id': str(product.id),
+                    'title': product.title,
+                    'description': product.description,
+                    'price': product.price,
+                    'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
+                    'images': product.images if hasattr(product, 'images') and product.images else [],
+                    'seller': {
+                        'id': str(seller.id) if seller else '',
+                        'username': seller.username if seller else '',
+                        'profileImage': seller.profile_image if seller else ''
+                    }
+                })
+            except Exception as e:
+                # Skip products that cause errors, but log them
+                import logging
+                logging.warning(f"Error processing product {getattr(product, 'id', 'unknown')} in trending products: {str(e)}")
+                continue
         
         return Response({
             'products': products_list
         }, status=status.HTTP_200_OK)
     except Exception as e:
+        import logging
+        logging.error(f"Error in get_trending_products endpoint: {str(e)}")
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
