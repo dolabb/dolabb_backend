@@ -872,8 +872,8 @@ def update_language(request):
         if language not in ['en', 'ar']:
             return Response({'success': False, 'error': 'Invalid language. Must be "en" or "ar"'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if user is authenticated
-        if hasattr(request, 'user') and request.user and hasattr(request.user, 'username'):
+        # Check if user is authenticated (has id attribute = real database model, not AnonymousUser)
+        if hasattr(request, 'user') and request.user and hasattr(request.user, 'id'):
             # User is authenticated - update language in database
             user = request.user
             user.language = language

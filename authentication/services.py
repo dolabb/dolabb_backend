@@ -434,9 +434,13 @@ class AuthService:
     def user_resend_otp(email, language=None):
         """Resend OTP for user - works with temp_users
         
+        IMPORTANT: Language is ALWAYS retrieved from TempUser (database), not from request.
+        This ensures consistency regardless of frontend localStorage state.
+        
         Args:
             email: User's email address
-            language: Optional language preference ('en' or 'ar')
+            language: DEPRECATED - Language is always retrieved from TempUser.language (database).
+                     This parameter is ignored for consistency.
         """
         # Check temp_users first
         temp_user = TempUser.objects(email=email).first()
@@ -447,8 +451,11 @@ class AuthService:
                 raise ValueError("User is already verified. Please login instead.")
             raise ValueError("User not found")
         
-        # Get language preference: use provided language, or default to 'en'
-        user_language = language if language in ['en', 'ar'] else 'en'
+        # ALWAYS use language stored in TempUser (from signup) - ignore request parameter
+        # This makes backend independent of frontend localStorage
+        user_language = getattr(temp_user, 'language', 'en')
+        if user_language not in ['en', 'ar']:
+            user_language = 'en'
         
         # Generate new OTP
         otp_code = temp_user.generate_otp(settings.OTP_EXPIRY_SECONDS)

@@ -146,21 +146,31 @@ def affiliate_verify_otp(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def resend_otp(request):
-    """Resend OTP - Combined endpoint for admin, user, and affiliate"""
+    """Resend OTP - Combined endpoint for admin, user, and affiliate
+    
+    Note: For users, language is automatically retrieved from TempUser (database),
+    not from request. This ensures consistency regardless of frontend localStorage state.
+    """
     serializer = ResendOTPSerializer(data=request.data)
     if not serializer.is_valid():
         return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        # Get language from request (frontend can send it from localStorage for guest users)
-        language = request.data.get('language') or request.data.get('preferredLanguage')
-        if language and language not in ['en', 'ar']:
-            language = None  # Invalid language, will default to 'en'
+        # For user type, language will be retrieved from TempUser (database)
+        # For admin/affiliate, language can be passed from request (optional)
+        user_type = serializer.validated_data.get('user_type', '').lower()
+        language = None
+        
+        # Only get language from request for admin/affiliate (users use database language)
+        if user_type != 'user':
+            language = request.data.get('language') or request.data.get('preferredLanguage')
+            if language and language not in ['en', 'ar']:
+                language = None
         
         result = AuthService.resend_otp_combined(
             serializer.validated_data['email'],
             serializer.validated_data['user_type'],
-            language=language
+            language=language  # Will be None for users, so backend uses TempUser.language
         )
         
         return Response({
