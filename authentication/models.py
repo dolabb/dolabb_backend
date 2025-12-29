@@ -74,6 +74,7 @@ class TempUser(Document):
     profile_image = StringField()
     role = StringField(required=True, choices=['buyer', 'seller'], default='buyer')
     status = StringField(default='pending_verification')
+    language = StringField(choices=['en', 'ar'], default='en', max_length=2)  # Language preference for notifications
     otp = EmbeddedDocumentField(OTPEmbedded)
     created_at = DateTimeField(default=datetime.utcnow)
     

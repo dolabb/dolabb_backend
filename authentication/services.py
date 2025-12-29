@@ -296,6 +296,7 @@ class AuthService:
             temp_user.dial_code = dial_code
             temp_user.profile_image = processed_profile_image if processed_profile_image else profile_image_url
             temp_user.role = role
+            temp_user.language = user_language  # Store language preference
             temp_user.set_password(password)
         else:
             # Create new temp user
@@ -308,6 +309,7 @@ class AuthService:
                 dial_code=dial_code,
                 profile_image=processed_profile_image if processed_profile_image else profile_image_url,
                 role=role,
+                language=user_language,  # Store language preference
                 status='pending_verification'
             )
             temp_user.set_password(password)
@@ -366,7 +368,8 @@ class AuthService:
             dial_code=temp_user.dial_code,
             profile_image=temp_user.profile_image,
             role=temp_user.role,
-            password_hash=temp_user.password_hash  # Copy hashed password
+            password_hash=temp_user.password_hash,  # Copy hashed password
+            language=getattr(temp_user, 'language', 'en')  # Transfer language preference from temp_user
         )
         user.status = 'active'
         
