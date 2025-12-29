@@ -42,6 +42,14 @@ def request_cashout(request):
         if not affiliate:
             return Response({'success': False, 'error': 'Affiliate not found'}, status=status.HTTP_404_NOT_FOUND)
         
+        # Check if bank details are present
+        if not affiliate.bank_name or not affiliate.account_number:
+            return Response({
+                'success': False,
+                'error': 'Bank details are required to request cashout. Please add your bank details first.',
+                'missing_bank_details': True
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Get currency from request (default to SAR if not provided)
         currency = request.data.get('currency', 'SAR').upper()
         
@@ -368,12 +376,6 @@ def format_affiliate_response(affiliate, request):
         'availableBalance': round(pending_earnings, 2),
         'commission_rate': commission_rate,
         'status': safe_get(affiliate, 'status', 'active'),
-        'bank_details': {
-            'bank_name': safe_get(affiliate, 'bank_name'),
-            'account_number': safe_get(affiliate, 'account_number'),
-            'iban': safe_get(affiliate, 'iban'),
-            'account_holder_name': safe_get(affiliate, 'account_holder_name')
-        },
         'created_at': get_date_safe(affiliate, 'created_at'),
         'last_activity': get_date_safe(affiliate, 'last_activity')
     }
@@ -517,14 +519,6 @@ def affiliate_profile(request):
                 if image_data:
                     processed_image = AuthService.process_profile_image(image_data, request)
                     affiliate.profile_image = processed_image if processed_image else image_data
-            if 'bank_name' in data:
-                affiliate.bank_name = data['bank_name']
-            if 'account_number' in data:
-                affiliate.account_number = data['account_number']
-            if 'iban' in data:
-                affiliate.iban = data['iban']
-            if 'account_holder_name' in data:
-                affiliate.account_holder_name = data['account_holder_name']
             
             # Update last activity
             from datetime import datetime
@@ -536,6 +530,89 @@ def affiliate_profile(request):
                 'success': True,
                 'message': 'Profile updated successfully',
                 'affiliate': format_affiliate_response(affiliate, request)
+            }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        from django.conf import settings
+        return Response({
+            'success': False, 
+            'error': f'Server error: {str(e)}',
+            'traceback': traceback.format_exc() if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST', 'PUT'])
+def bank_details(request):
+    """Get, add, or update affiliate bank details (authenticated affiliate only)"""
+    try:
+        affiliate = request.user
+        
+        # Verify user is an affiliate
+        if not affiliate or not hasattr(affiliate, 'affiliate_code'):
+            return Response({'success': False, 'error': 'Unauthorized. Affiliate access required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if request.method == 'GET':
+            # GET: Return bank details
+            return Response({
+                'success': True,
+                'bank_details': {
+                    'bank_name': affiliate.bank_name or '',
+                    'account_number': affiliate.account_number or '',
+                    'iban': affiliate.iban or '',
+                    'account_holder_name': affiliate.account_holder_name or ''
+                }
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST' or request.method == 'PUT':
+            # POST/PUT: Add or update bank details
+            data = request.data
+            
+            # Validate required fields
+            bank_name = data.get('bank_name', '').strip()
+            account_number = data.get('account_number', '').strip()
+            
+            if not bank_name:
+                return Response({
+                    'success': False,
+                    'error': 'Bank name is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not account_number:
+                return Response({
+                    'success': False,
+                    'error': 'Account number is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update bank details
+            affiliate.bank_name = bank_name
+            affiliate.account_number = account_number
+            affiliate.iban = data.get('iban', '').strip() or None
+            affiliate.account_holder_name = data.get('account_holder_name', '').strip() or affiliate.full_name
+            
+            # Update last activity
+            from datetime import datetime
+            affiliate.last_activity = datetime.utcnow()
+            
+            affiliate.save()
+            
+            # Send notification that bank details were updated
+            try:
+                from notifications.notification_helper import NotificationHelper
+                NotificationHelper.send_affiliate_payment_details_updated(str(affiliate.id))
+            except Exception as e:
+                import logging
+                logging.error(f"Error sending bank details updated notification: {str(e)}")
+            
+            return Response({
+                'success': True,
+                'message': 'Bank details saved successfully',
+                'bank_details': {
+                    'bank_name': affiliate.bank_name,
+                    'account_number': affiliate.account_number,
+                    'iban': affiliate.iban or '',
+                    'account_holder_name': affiliate.account_holder_name
+                }
             }, status=status.HTTP_200_OK)
     
     except Exception as e:

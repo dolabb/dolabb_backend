@@ -354,12 +354,12 @@ AFFILIATE_NOTIFICATIONS = {
     'welcome_to_affiliate_program': {
         'en': {
             'title': 'Welcome to Affiliate Program',
-            'message': 'Welcome! Your affiliate account is active. Your referral link and code are ready to use.',
+            'message': 'Welcome! Your affiliate account is active. Your affiliate code is: <strong style="font-size: 20px; color: #1f2937; letter-spacing: 2px;">{affiliate_code}</strong><br><br><strong>How to Use Your Affiliate Code:</strong><br>1. Share your affiliate code with potential customers<br>2. When they use your code during checkout, you earn a commission<br>3. Track your earnings and referrals in your affiliate dashboard<br>4. Request cashouts when you reach the minimum payout threshold<br><br>Your referral link format: <code>https://dolabb.com?ref={affiliate_code}</code>',
             'type': 'affiliate_message'
         },
         'ar': {
             'title': 'مرحباً بك في برنامج الشراكة',
-            'message': 'مرحباً! حساب الشراكة الخاص بك نشط. رابط الإحالة والرمز الخاصان بك جاهزان للاستخدام.',
+            'message': 'مرحباً! حساب الشراكة الخاص بك نشط. رمز الشراكة الخاص بك هو: <strong style="font-size: 20px; color: #1f2937; letter-spacing: 2px;">{affiliate_code}</strong><br><br><strong>كيفية استخدام رمز الشراكة الخاص بك:</strong><br>1. شارك رمز الشراكة الخاص بك مع العملاء المحتملين<br>2. عند استخدامهم لرمزك أثناء الدفع، ستحصل على عمولة<br>3. تتبع أرباحك وإحالاتك في لوحة تحكم الشراكة<br>4. اطلب السحب عند الوصول إلى الحد الأدنى للدفع<br><br>صيغة رابط الإحالة الخاص بك: <code>https://dolabb.com?ref={affiliate_code}</code>',
             'type': 'affiliate_message'
         }
     },

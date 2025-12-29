@@ -78,10 +78,6 @@ class AffiliateSignupSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     password = serializers.CharField(write_only=True, min_length=6)
     country_code = serializers.CharField(max_length=10)
-    bank_name = serializers.CharField(max_length=200)
-    account_number = serializers.CharField(max_length=100)
-    iban = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    account_holder_name = serializers.CharField(max_length=200, required=False)
     profile_image_url = serializers.URLField(required=False, allow_blank=True)
 
 

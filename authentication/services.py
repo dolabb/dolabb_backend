@@ -606,17 +606,20 @@ class AuthService:
             raise Exception(f"Failed to reset password: {str(e)}")
     
     @staticmethod
-    def affiliate_signup(full_name, email, phone, password, country_code, bank_name, account_number, iban=None, account_holder_name=None, profile_image_url=None, request=None):
+    def affiliate_signup(full_name, email, phone, password, country_code, profile_image_url=None, request=None):
         """Affiliate signup"""
         if Affiliate.objects(email=email).first():
             raise ValueError("Affiliate with this email already exists")
         
-        # Generate affiliate code
+        # Generate short affiliate code (6-8 characters, alphanumeric uppercase)
         import random
         import string
-        affiliate_code = f"AFF-{''.join(random.choices(string.ascii_uppercase + string.digits, k=6))}"
+        # Generate 6-8 character code (randomly choose length for variety)
+        code_length = random.choice([6, 7, 8])
+        affiliate_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=code_length))
         while Affiliate.objects(affiliate_code=affiliate_code).first():
-            affiliate_code = f"AFF-{''.join(random.choices(string.ascii_uppercase + string.digits, k=6))}"
+            code_length = random.choice([6, 7, 8])
+            affiliate_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=code_length))
         
         # Process profile image if provided (convert base64 to URL if needed)
         processed_profile_image = None
@@ -628,10 +631,6 @@ class AuthService:
             email=email,
             phone=phone,
             country_code=country_code,
-            bank_name=bank_name,
-            account_number=account_number,
-            iban=iban,
-            account_holder_name=account_holder_name or full_name,
             affiliate_code=affiliate_code,
             profile_image=processed_profile_image if processed_profile_image else profile_image_url
         )

@@ -914,10 +914,6 @@ def affiliate_signup(request):
             serializer.validated_data['phone'],
             serializer.validated_data['password'],
             serializer.validated_data['country_code'],
-            serializer.validated_data['bank_name'],
-            serializer.validated_data['account_number'],
-            serializer.validated_data.get('iban'),
-            serializer.validated_data.get('account_holder_name'),
             serializer.validated_data.get('profile_image_url'),
             request
         )
@@ -931,12 +927,6 @@ def affiliate_signup(request):
                 'phone': affiliate.phone,
                 'affiliate_code': affiliate.affiliate_code,
                 'profile_image': affiliate.profile_image or '',
-                'bank_details': {
-                    'bank_name': affiliate.bank_name,
-                    'account_number': affiliate.account_number,
-                    'iban': affiliate.iban or '',
-                    'account_holder_name': affiliate.account_holder_name
-                },
                 'total_earnings': affiliate.total_earnings,
                 'total_commissions': affiliate.total_earnings,
                 'code_usage_count': affiliate.code_usage_count,

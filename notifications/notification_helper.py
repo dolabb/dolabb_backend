@@ -670,10 +670,78 @@ class NotificationHelper:
     # AFFILIATE Notifications
     @staticmethod
     def send_welcome_to_affiliate_program(affiliate_id):
-        """Send welcome to affiliate program notification"""
-        return NotificationHelper.send_notification_to_user(
-            affiliate_id, 'affiliate', 'welcome_to_affiliate_program', 'affiliate'
-        )
+        """Send welcome to affiliate program notification with affiliate code"""
+        try:
+            # Get affiliate to retrieve affiliate code
+            affiliate = Affiliate.objects(id=affiliate_id).first()
+            if not affiliate:
+                print(f"Warning: Affiliate not found with id={affiliate_id}")
+                return None
+            
+            affiliate_code = getattr(affiliate, 'affiliate_code', '')
+            
+            # Get user language (default to 'en' for affiliates)
+            user_language = 'en'
+            
+            # Get template with user's language
+            template = get_notification_template('affiliate', 'welcome_to_affiliate_program', user_language)
+            if not template:
+                print(f"Warning: Template not found for welcome_to_affiliate_program")
+                return None
+            
+            # Format message with affiliate code
+            message = template['message'].format(affiliate_code=affiliate_code)
+            
+            # Create user notification
+            user_notification = UserNotification(
+                user_id=affiliate.id,
+                title=template['title'],
+                message=message,
+                notification_type=template['type'],
+                delivered_at=datetime.utcnow()
+            )
+            user_notification.save()
+            
+            # Send via WebSocket
+            try:
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        f'notifications_{affiliate.id}',
+                        {
+                            'type': 'send_notification',
+                            'notification': {
+                                'id': str(user_notification.id),
+                                'title': user_notification.title,
+                                'message': user_notification.message,
+                                'type': user_notification.notification_type,
+                                'createdAt': user_notification.created_at.isoformat()
+                            }
+                        }
+                    )
+            except Exception as e:
+                print(f"Warning: Failed to send WebSocket notification: {str(e)}")
+            
+            # Send email notification via Resend
+            try:
+                if hasattr(affiliate, 'email') and affiliate.email:
+                    user_name = getattr(affiliate, 'full_name', None) or getattr(affiliate, 'name', None)
+                    
+                    send_notification_email(
+                        email=affiliate.email,
+                        notification_title=template['title'],
+                        notification_message=message,
+                        notification_type='success',
+                        user_name=user_name,
+                        language=user_language
+                    )
+            except Exception as e:
+                print(f"Warning: Failed to send email notification: {str(e)}")
+            
+            return user_notification
+        except Exception as e:
+            print(f"Error sending welcome to affiliate program notification: {str(e)}")
+            return None
     
     @staticmethod
     def send_affiliate_payment_details_needed(affiliate_id):
