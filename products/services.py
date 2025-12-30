@@ -651,10 +651,26 @@ class ProductService:
             product.brand = data['brand']
         if 'currency' in data:
             product.currency = data['currency']
+        # Track old quantity to detect when product is restocked
+        old_quantity = product.quantity if product.quantity is not None else 0
+        quantity_updated = False
+        
         if 'Quantity' in data:
-            product.quantity = int(data['Quantity'])
+            new_quantity = int(data['Quantity'])
+            product.quantity = new_quantity
+            quantity_updated = True
         elif 'quantity' in data:
-            product.quantity = int(data['quantity'])
+            new_quantity = int(data['quantity'])
+            product.quantity = new_quantity
+            quantity_updated = True
+        
+        # If quantity was updated and product is now in stock (was 0 or less, now > 0)
+        # and status is 'sold', change it back to 'active'
+        if quantity_updated:
+            new_quantity = product.quantity if product.quantity is not None else 0
+            if old_quantity <= 0 and new_quantity > 0 and product.status == 'sold':
+                product.status = 'active'
+        
         if 'Gender' in data:
             product.gender = data['Gender']
         elif 'gender' in data:

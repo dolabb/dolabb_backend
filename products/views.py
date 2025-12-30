@@ -464,6 +464,9 @@ def update_product(request, product_id):
                 'locations': product.shipping_info.locations
             }
         
+        # Determine if product is out of stock
+        is_out_of_stock = product.quantity is None or product.quantity <= 0
+        
         # Build product data
         product_data = {
             'id': str(product.id),
@@ -487,6 +490,7 @@ def update_product(request, product_id):
             'Processing Time (days)': product.processing_time_days,
             'Shipping Locations': shipping_info['locations'] if shipping_info else [],
             'status': product.status,
+            'isOutOfStock': is_out_of_stock,
             'seller_id': str(product.seller_id.id) if hasattr(product.seller_id, 'id') else str(product.seller_id),
             'seller_name': product.seller_name,
             'created_at': product.created_at.isoformat() if product.created_at else None,
@@ -562,6 +566,9 @@ def get_seller_products(request):
                 except:
                     is_saved = False
             
+            # Determine if product is out of stock
+            is_out_of_stock = product.quantity is None or product.quantity <= 0
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -579,6 +586,7 @@ def get_seller_products(request):
                 'status': product.status,
                 'approved': product.approved,
                 'quantity': product.quantity,
+                'isOutOfStock': is_out_of_stock,
                 'isSaved': is_saved,
                 'createdAt': product.created_at.isoformat() if product.created_at else None,
                 'updatedAt': product.updated_at.isoformat() if product.updated_at else None

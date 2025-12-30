@@ -25,6 +25,9 @@ def get_user_products(request):
         
         products_list = []
         for product in products:
+            # Determine if product is out of stock
+            is_out_of_stock = product.quantity is None or product.quantity <= 0
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -33,6 +36,8 @@ def get_user_products(request):
                 'currency': product.currency if hasattr(product, 'currency') and product.currency else 'SAR',
                 'images': product.images,
                 'status': product.status,
+                'quantity': product.quantity,
+                'isOutOfStock': is_out_of_stock,
                 'createdAt': product.created_at.isoformat()
             })
         
@@ -725,6 +730,9 @@ def get_products_by_seller(request, seller_id):
                 except:
                     seller = None
             
+            # Determine if product is out of stock
+            is_out_of_stock = product.quantity is None or product.quantity <= 0
+            
             products_list.append({
                 'id': str(product.id),
                 'title': product.title,
@@ -742,6 +750,7 @@ def get_products_by_seller(request, seller_id):
                 'status': product.status,
                 'approved': product.approved,
                 'quantity': product.quantity,
+                'isOutOfStock': is_out_of_stock,
                 'isSaved': is_saved,
                 'seller': {
                     'id': str(seller.id) if seller else '',
