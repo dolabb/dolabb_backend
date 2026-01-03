@@ -44,5 +44,8 @@ urlpatterns = [
     # Image Upload
     path('upload-image/', upload_image, name='upload_image'),
     path('check-vps-config/', check_vps_config, name='check_vps_config'),
+    
+    # Contact Form
+    path('contact/', views.contact_form, name='contact_form'),
 ]
 

@@ -11,7 +11,7 @@ from authentication.serializers import (
     UserSignupSerializer, UserLoginSerializer, UserForgotPasswordSerializer, UserResetPasswordSerializer,
     AffiliateSignupSerializer, AffiliateLoginSerializer, AffiliateForgotPasswordSerializer, AffiliateResetPasswordSerializer,
     UserProfileSerializer, VerifyOTPSerializer,
-    ResendOTPSerializer
+    ResendOTPSerializer, ContactFormSerializer
 )
 from authentication.models import User
 from authentication.otp_views import verify_otp, admin_verify_otp, user_verify_otp, affiliate_verify_otp
@@ -1028,4 +1028,80 @@ def affiliate_reset_password(request):
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def contact_form(request):
+    """Handle contact form submissions"""
+    serializer = ContactFormSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        from notifications.email_templates import send_notification_email
+        
+        # Get form data
+        full_name = serializer.validated_data['full_name']
+        email = serializer.validated_data['email']
+        phone = serializer.validated_data.get('phone', '')
+        subject = serializer.validated_data['subject']
+        message = serializer.validated_data['message']
+        
+        # Create email content
+        email_subject = f"Contact Form: {subject}"
+        
+        # Format email message
+        email_message = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2 style="color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">
+                New Contact Form Submission
+            </h2>
+            
+            <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 10px 0;"><strong style="color: #1f2937;">Full Name:</strong> {full_name}</p>
+                <p style="margin: 10px 0;"><strong style="color: #1f2937;">Email:</strong> <a href="mailto:{email}" style="color: #3b82f6;">{email}</a></p>
+        """
+        
+        if phone:
+            email_message += f'<p style="margin: 10px 0;"><strong style="color: #1f2937;">Phone:</strong> <a href="tel:{phone}" style="color: #3b82f6;">{phone}</a></p>'
+        
+        email_message += f"""
+                <p style="margin: 10px 0;"><strong style="color: #1f2937;">Subject:</strong> {subject}</p>
+            </div>
+            
+            <div style="background-color: #ffffff; padding: 20px; border-left: 4px solid #3b82f6; margin: 20px 0;">
+                <h3 style="color: #1f2937; margin-top: 0;">Message:</h3>
+                <p style="white-space: pre-wrap; color: #4b5563;">{message}</p>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px;">
+                <p>This email was sent from the contact form on dolabb.com</p>
+                <p>You can reply directly to this email to respond to {full_name} at {email}</p>
+            </div>
+        </div>
+        """
+        
+        # Send email to contact@dolabb.com
+        send_notification_email(
+            email='contact@dolabb.com',
+            notification_title=email_subject,
+            notification_message=email_message,
+            notification_type='info',
+            user_name='Dolabb Team',
+            language='en'
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Thank you for contacting us! We have received your message and will get back to you soon.'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Error sending contact form email: {str(e)}")
+        return Response({
+            'success': False,
+            'error': 'Failed to send your message. Please try again later.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -123,3 +123,21 @@ class UserProfileSerializer(serializers.Serializer):
     joined_date = serializers.DateTimeField()
     role = serializers.CharField()
 
+
+class ContactFormSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=200, required=True)
+    email = serializers.EmailField(required=True)
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    subject = serializers.ChoiceField(
+        choices=[
+            'General Inquiry',
+            'Technical Support',
+            'Billing Question',
+            'Partnership Inquiry',
+            'Report an Issue',
+            'Other'
+        ],
+        required=True
+    )
+    message = serializers.CharField(required=True, min_length=10)
+

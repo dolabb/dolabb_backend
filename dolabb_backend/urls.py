@@ -27,6 +27,7 @@ def api_root(request):
             'seller': '/api/seller/',
             'affiliate': '/api/affiliate/',
             'notifications': '/api/notifications/',
+            'contact_form': '/api/auth/contact/',
             'admin_panel': '/admin/',
             'websocket_chat': '/ws/chat/{conversation_id}/',
             'websocket_notifications': '/ws/notifications/{user_id}/',
