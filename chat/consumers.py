@@ -284,17 +284,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def receive(self, text_data):
         """Receive message from WebSocket"""
+        user_id = str(self.user.id) if hasattr(self, 'user') and self.user else 'unauthenticated'
+        conversation_id = self.conversation_id if hasattr(self, 'conversation_id') else None
+        
+        logger.info(f"[WEBSOCKET_RECEIVE] Received message - user_id: {user_id}, conversation_id: {conversation_id}, message_length: {len(text_data)}")
+        
         # Ensure user is authenticated
         if not self.user:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': 'Authentication required'
-            }))
+            }
+            logger.warning(f"[WEBSOCKET_RECEIVE] Unauthenticated request - response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
             return
         
         try:
             data = json.loads(text_data)
             message_type = data.get('type')
+            
+            logger.info(f"[WEBSOCKET_RECEIVE] Parsed message - user_id: {user_id}, conversation_id: {conversation_id}, message_type: {message_type}, data_keys: {list(data.keys())}")
             
             if message_type == 'chat_message':
                 await self.handle_chat_message(data)
@@ -307,25 +316,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif message_type == 'reject_offer':
                 await self.handle_reject_offer(data)
             else:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': f'Unknown message type: {message_type}',
                     'error': 'UNKNOWN_MESSAGE_TYPE',
-                    'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
-        except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({
+                    'conversationId': conversation_id
+                }
+                logger.warning(f"[WEBSOCKET_RECEIVE] Unknown message type - user_id: {user_id}, message_type: {message_type}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
+        except json.JSONDecodeError as e:
+            error_response = {
                 'type': 'error',
                 'message': 'Invalid JSON format',
                 'error': 'INVALID_JSON',
-                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+                'conversationId': conversation_id
+            }
+            logger.error(f"[WEBSOCKET_RECEIVE] JSON decode error - user_id: {user_id}, error: {str(e)}, response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
         except Exception as e:
-            logger.error(f"Error processing WebSocket message: {str(e)}", exc_info=True)
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': str(e)
-            }))
+            }
+            logger.error(f"[WEBSOCKET_RECEIVE] Error processing message - user_id: {user_id}, conversation_id: {conversation_id}, error: {str(e)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
     
     async def handle_chat_message(self, data):
         """Handle regular chat message"""
@@ -375,14 +389,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         house_number = data.get('houseNumber')
         text = data.get('text', '')  # Optional message with offer
         
+        logger.info(f"[OFFER_SEND] Received send offer request - buyer_id: {buyer_id}, product_id: {product_id}, offer_amount: {offer_amount}, receiver_id: {receiver_id}, conversation_id: {self.conversation_id if hasattr(self, 'conversation_id') else None}, data: {json.dumps(data)}")
+        
         # Validate required fields
         if not product_id or not offer_amount or not receiver_id:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': 'productId, offerAmount, and receiverId are required',
                 'error': 'MISSING_REQUIRED_FIELDS',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.warning(f"[OFFER_SEND] Missing required fields - buyer_id: {buyer_id}, response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
             return
         
         try:
@@ -443,24 +461,54 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Get complete message data with all fields
             message_data = await self.get_message_data(message, buyer_id)
             
+            # Prepare broadcast data
+            broadcast_data = {
+                'type': 'offer_sent',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': message.conversation_id if message else self.conversation_id
+            }
+            logger.info(f"[OFFER_SEND] Broadcasting to room - room_group_name: {self.room_group_name}, conversation_id: {broadcast_data['conversationId']}, broadcast_type: {broadcast_data['type']}")
+            
             # Broadcast offer to room group
-            await self.safe_channel_layer_operation(
+            broadcast_success = await self.safe_channel_layer_operation(
                 self.channel_layer.group_send,
                 self.room_group_name,
-                {
-                    'type': 'offer_sent',
-                    'offer': offer_data,
-                    'message': message_data,
-                    'conversationId': message.conversation_id
-                }
+                broadcast_data
             )
+            logger.info(f"[OFFER_SEND] Broadcast result - success: {broadcast_success}, room_group_name: {self.room_group_name}")
+            
+            # Also send confirmation to the buyer who sent the offer
+            confirmation_response = {
+                'type': 'offer_sent',
+                'success': True,
+                'message': 'Offer sent successfully',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': broadcast_data['conversationId']
+            }
+            logger.info(f"[OFFER_SEND] Sending confirmation to buyer - buyer_id: {buyer_id}, response_keys: {list(confirmation_response.keys())}")
+            await self.send(text_data=json.dumps(confirmation_response))
+            logger.info(f"[OFFER_SEND] Confirmation sent successfully - buyer_id: {buyer_id}")
+            
         except ValueError as e:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': str(e),
                 'error': 'OFFER_CREATION_ERROR',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.error(f"[OFFER_SEND] Error occurred - buyer_id: {buyer_id}, product_id: {product_id}, error: {str(e)}, response: {json.dumps(error_response)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
+        except Exception as e:
+            error_response = {
+                'type': 'error',
+                'message': f'Unexpected error: {str(e)}',
+                'error': 'OFFER_CREATION_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+            }
+            logger.error(f"[OFFER_SEND] Unexpected error - buyer_id: {buyer_id}, product_id: {product_id}, error: {str(e)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
     
     async def handle_counter_offer(self, data):
         """Handle counter offer via WebSocket - allows both buyer and seller to counter"""
@@ -472,46 +520,60 @@ class ChatConsumer(AsyncWebsocketConsumer):
         receiver_id = data.get('receiverId')
         text = data.get('text', '')  # Optional message with counter offer
         
+        logger.info(f"[OFFER_COUNTER] Received counter offer request - user_id: {user_id}, offer_id: {offer_id}, counter_amount: {counter_amount}, receiver_id: {receiver_id}, conversation_id: {self.conversation_id if hasattr(self, 'conversation_id') else None}, data: {json.dumps(data)}")
+        
         # Validate required fields
         if not offer_id or not counter_amount or not receiver_id:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': 'offerId, counterAmount, and receiverId are required',
                 'error': 'MISSING_REQUIRED_FIELDS',
                 'offerId': offer_id,
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.warning(f"[OFFER_COUNTER] Missing required fields - user_id: {user_id}, response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
             return
         
         try:
             # Get offer first to determine receiver
             offer = await self.get_offer_async(offer_id)
             if not offer:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': 'Offer not found. It may have been deleted or already processed.',
                     'error': 'OFFER_NOT_FOUND',
                     'offerId': offer_id,
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_COUNTER] Offer not found - user_id: {user_id}, offer_id: {offer_id}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
+            
+            logger.info(f"[OFFER_COUNTER] Offer found - offer_id: {offer_id}, current_status: {offer.status}, buyer_id: {str(offer.buyer_id.id) if offer.buyer_id else None}, seller_id: {str(offer.seller_id.id) if offer.seller_id else None}")
             
             # Determine if user is buyer or seller
             is_buyer = str(offer.buyer_id.id) == user_id
             is_seller = str(offer.seller_id.id) == user_id
             
+            logger.info(f"[OFFER_COUNTER] User role check - user_id: {user_id}, is_buyer: {is_buyer}, is_seller: {is_seller}")
+            
             if not is_buyer and not is_seller:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': 'You are not authorized to counter this offer',
                     'error': 'UNAUTHORIZED_ACTION',
                     'offerId': offer_id,
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_COUNTER] Unauthorized - user_id: {user_id}, offer_id: {offer_id}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
             
             # Counter the offer (now accepts both buyer and seller)
+            logger.info(f"[OFFER_COUNTER] Countering offer - offer_id: {offer_id}, user_id: {user_id}, counter_amount: {counter_amount}")
             offer = await self.counter_offer_async(offer_id, user_id, float(counter_amount))
+            logger.info(f"[OFFER_COUNTER] Offer countered successfully - offer_id: {offer_id}, new_status: {offer.status}, counter_amount: {offer.counter_offer_amount if hasattr(offer, 'counter_offer_amount') else None}")
             
             # Save message with counter offer
             message = await self.save_message(
@@ -520,32 +582,66 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 str(offer.product_id.id) if offer.product_id else None,
                 [], str(offer.id)
             )
+            logger.info(f"[OFFER_COUNTER] Message saved - message_id: {str(message.id) if message else None}, conversation_id: {message.conversation_id if message else None}")
             
             # Get offer details with product information and counter offer
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
+            logger.info(f"[OFFER_COUNTER] Offer data prepared - offer_id: {offer_id}, offer_data_keys: {list(offer_data.keys())}")
             
             # Get complete message data with all fields
             message_data = await self.get_message_data(message, user_id)
+            logger.info(f"[OFFER_COUNTER] Message data prepared - message_id: {str(message.id) if message else None}, message_data_keys: {list(message_data.keys()) if message_data else None}")
+            
+            # Prepare broadcast data
+            broadcast_data = {
+                'type': 'offer_countered',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': message.conversation_id if message else self.conversation_id
+            }
+            logger.info(f"[OFFER_COUNTER] Broadcasting to room - room_group_name: {self.room_group_name}, conversation_id: {broadcast_data['conversationId']}, broadcast_type: {broadcast_data['type']}")
             
             # Broadcast counter offer to room group
-            await self.safe_channel_layer_operation(
+            broadcast_success = await self.safe_channel_layer_operation(
                 self.channel_layer.group_send,
                 self.room_group_name,
-                {
-                    'type': 'offer_countered',
-                    'offer': offer_data,
-                    'message': message_data,
-                    'conversationId': message.conversation_id
-                }
+                broadcast_data
             )
+            logger.info(f"[OFFER_COUNTER] Broadcast result - success: {broadcast_success}, room_group_name: {self.room_group_name}")
+            
+            # Also send confirmation to the user who countered
+            confirmation_response = {
+                'type': 'offer_countered',
+                'success': True,
+                'message': 'Counter offer sent successfully',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': broadcast_data['conversationId']
+            }
+            logger.info(f"[OFFER_COUNTER] Sending confirmation to user - user_id: {user_id}, response_keys: {list(confirmation_response.keys())}")
+            await self.send(text_data=json.dumps(confirmation_response))
+            logger.info(f"[OFFER_COUNTER] Confirmation sent successfully - user_id: {user_id}")
+            
         except ValueError as e:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': str(e),
                 'error': 'COUNTER_OFFER_ERROR',
                 'offerId': offer_id,
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.error(f"[OFFER_COUNTER] Error occurred - user_id: {user_id}, offer_id: {offer_id}, error: {str(e)}, response: {json.dumps(error_response)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
+        except Exception as e:
+            error_response = {
+                'type': 'error',
+                'message': f'Unexpected error: {str(e)}',
+                'error': 'COUNTER_OFFER_ERROR',
+                'offerId': offer_id,
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+            }
+            logger.error(f"[OFFER_COUNTER] Unexpected error - user_id: {user_id}, offer_id: {offer_id}, error: {str(e)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
     
     async def handle_accept_offer(self, data):
         """Handle accepting an offer via WebSocket
@@ -560,68 +656,89 @@ class ChatConsumer(AsyncWebsocketConsumer):
         receiver_id = data.get('receiverId')
         text = data.get('text', '')  # Optional message
         
+        logger.info(f"[OFFER_ACCEPT] Received accept offer request - user_id: {user_id}, offer_id: {offer_id}, receiver_id: {receiver_id}, conversation_id: {self.conversation_id if hasattr(self, 'conversation_id') else None}, data: {json.dumps(data)}")
+        
         # Validate required fields
         if not offer_id or not receiver_id:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': 'offerId and receiverId are required',
                 'error': 'MISSING_REQUIRED_FIELDS',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.warning(f"[OFFER_ACCEPT] Missing required fields - user_id: {user_id}, response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
             return
         
         try:
             # Get offer to check status and determine who can accept
             offer = await self.get_offer_async(offer_id)
             if not offer:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': 'Offer not found',
                     'error': 'OFFER_NOT_FOUND',
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_ACCEPT] Offer not found - user_id: {user_id}, offer_id: {offer_id}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
+            
+            logger.info(f"[OFFER_ACCEPT] Offer found - offer_id: {offer_id}, current_status: {offer.status}, buyer_id: {str(offer.buyer_id.id) if offer.buyer_id else None}, seller_id: {str(offer.seller_id.id) if offer.seller_id else None}")
             
             # Determine if user is buyer or seller
             is_buyer = str(offer.buyer_id.id) == user_id
             is_seller = str(offer.seller_id.id) == user_id
             
+            logger.info(f"[OFFER_ACCEPT] User role check - user_id: {user_id}, is_buyer: {is_buyer}, is_seller: {is_seller}")
+            
             # Validate who can accept based on offer status
             if offer.status == 'pending' and not is_seller:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': 'Only seller can accept a pending offer',
                     'error': 'UNAUTHORIZED_ACTION',
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_ACCEPT] Unauthorized - user_id: {user_id}, offer_status: {offer.status}, is_seller: {is_seller}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
             elif offer.status == 'countered' and not is_buyer:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': 'Only buyer can accept a counter offer',
                     'error': 'UNAUTHORIZED_ACTION',
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_ACCEPT] Unauthorized - user_id: {user_id}, offer_status: {offer.status}, is_buyer: {is_buyer}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
             elif offer.status not in ['pending', 'countered']:
-                await self.send(text_data=json.dumps({
+                error_response = {
                     'type': 'error',
                     'message': f'Cannot accept offer with status: {offer.status}',
                     'error': 'INVALID_OFFER_STATUS',
                     'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-                }))
+                }
+                logger.warning(f"[OFFER_ACCEPT] Invalid status - user_id: {user_id}, offer_status: {offer.status}, response: {json.dumps(error_response)}")
+                await self.send(text_data=json.dumps(error_response))
                 return
             
             # Accept the offer (seller accepts original, buyer accepts counter)
             if offer.status == 'pending':
                 # Seller accepting buyer's offer
+                logger.info(f"[OFFER_ACCEPT] Seller accepting buyer's offer - offer_id: {offer_id}, seller_id: {user_id}")
                 offer = await self.accept_offer_async(offer_id, user_id)
             else:
                 # Buyer accepting seller's counter offer
+                logger.info(f"[OFFER_ACCEPT] Buyer accepting seller's counter offer - offer_id: {offer_id}, buyer_id: {user_id}")
                 offer = await self.accept_counter_offer_async(offer_id, user_id)
+            
+            logger.info(f"[OFFER_ACCEPT] Offer accepted successfully - offer_id: {offer_id}, new_status: {offer.status}")
             
             # Get complete offer details with product information
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
+            logger.info(f"[OFFER_ACCEPT] Offer data prepared - offer_id: {offer_id}, offer_data_keys: {list(offer_data.keys())}")
             
             # Save message
             message = await self.save_message(
@@ -630,28 +747,60 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 str(offer.product_id.id) if offer.product_id else None,
                 [], str(offer.id)
             )
+            logger.info(f"[OFFER_ACCEPT] Message saved - message_id: {str(message.id) if message else None}, conversation_id: {message.conversation_id if message else None}")
             
             # Get complete message data with all fields
             message_data = await self.get_message_data(message, user_id)
+            logger.info(f"[OFFER_ACCEPT] Message data prepared - message_id: {str(message.id) if message else None}, message_data_keys: {list(message_data.keys()) if message_data else None}")
+            
+            # Prepare broadcast data
+            broadcast_data = {
+                'type': 'offer_accepted',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': message.conversation_id if message else self.conversation_id
+            }
+            logger.info(f"[OFFER_ACCEPT] Broadcasting to room - room_group_name: {self.room_group_name}, conversation_id: {broadcast_data['conversationId']}, broadcast_type: {broadcast_data['type']}")
             
             # Broadcast offer acceptance to room group
-            await self.safe_channel_layer_operation(
+            broadcast_success = await self.safe_channel_layer_operation(
                 self.channel_layer.group_send,
                 self.room_group_name,
-                {
-                    'type': 'offer_accepted',
-                    'offer': offer_data,
-                    'message': message_data,
-                    'conversationId': message.conversation_id
-                }
+                broadcast_data
             )
+            logger.info(f"[OFFER_ACCEPT] Broadcast result - success: {broadcast_success}, room_group_name: {self.room_group_name}")
+            
+            # Also send confirmation to the user who accepted
+            confirmation_response = {
+                'type': 'offer_accepted',
+                'success': True,
+                'message': 'Offer accepted successfully',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': broadcast_data['conversationId']
+            }
+            logger.info(f"[OFFER_ACCEPT] Sending confirmation to user - user_id: {user_id}, response_keys: {list(confirmation_response.keys())}")
+            await self.send(text_data=json.dumps(confirmation_response))
+            logger.info(f"[OFFER_ACCEPT] Confirmation sent successfully - user_id: {user_id}")
+            
         except ValueError as e:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': str(e),
-                'error': 'REJECT_OFFER_ERROR',
+                'error': 'ACCEPT_OFFER_ERROR',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.error(f"[OFFER_ACCEPT] Error occurred - user_id: {user_id}, offer_id: {offer_id}, error: {str(e)}, response: {json.dumps(error_response)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
+        except Exception as e:
+            error_response = {
+                'type': 'error',
+                'message': f'Unexpected error: {str(e)}',
+                'error': 'ACCEPT_OFFER_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+            }
+            logger.error(f"[OFFER_ACCEPT] Unexpected error - user_id: {user_id}, offer_id: {offer_id}, error: {str(e)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
     
     async def handle_reject_offer(self, data):
         """Handle rejecting an offer via WebSocket"""
@@ -662,22 +811,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         receiver_id = data.get('receiverId')
         text = data.get('text', '')  # Optional message
         
+        logger.info(f"[OFFER_REJECT] Received reject offer request - seller_id: {seller_id}, offer_id: {offer_id}, receiver_id: {receiver_id}, conversation_id: {self.conversation_id if hasattr(self, 'conversation_id') else None}, data: {json.dumps(data)}")
+        
         # Validate required fields
         if not offer_id or not receiver_id:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': 'offerId and receiverId are required',
                 'error': 'MISSING_REQUIRED_FIELDS',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.warning(f"[OFFER_REJECT] Missing required fields - seller_id: {seller_id}, response: {json.dumps(error_response)}")
+            await self.send(text_data=json.dumps(error_response))
             return
         
         try:
             # Reject the offer
+            logger.info(f"[OFFER_REJECT] Rejecting offer - offer_id: {offer_id}, seller_id: {seller_id}")
             offer = await self.reject_offer_async(offer_id, seller_id)
+            logger.info(f"[OFFER_REJECT] Offer rejected successfully - offer_id: {offer_id}, new_status: {offer.status}")
             
             # Get complete offer details with product information
             offer_data = await self.get_offer_details_async(offer, include_counter=True)
+            logger.info(f"[OFFER_REJECT] Offer data prepared - offer_id: {offer_id}, offer_data_keys: {list(offer_data.keys())}")
             
             # Save message
             message = await self.save_message(
@@ -686,28 +842,60 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 str(offer.product_id.id) if offer.product_id else None,
                 [], str(offer.id)
             )
+            logger.info(f"[OFFER_REJECT] Message saved - message_id: {str(message.id) if message else None}, conversation_id: {message.conversation_id if message else None}")
             
             # Get complete message data with all fields
             message_data = await self.get_message_data(message, seller_id)
+            logger.info(f"[OFFER_REJECT] Message data prepared - message_id: {str(message.id) if message else None}, message_data_keys: {list(message_data.keys()) if message_data else None}")
+            
+            # Prepare broadcast data
+            broadcast_data = {
+                'type': 'offer_rejected',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': message.conversation_id if message else self.conversation_id
+            }
+            logger.info(f"[OFFER_REJECT] Broadcasting to room - room_group_name: {self.room_group_name}, conversation_id: {broadcast_data['conversationId']}, broadcast_type: {broadcast_data['type']}")
             
             # Broadcast offer rejection to room group
-            await self.safe_channel_layer_operation(
+            broadcast_success = await self.safe_channel_layer_operation(
                 self.channel_layer.group_send,
                 self.room_group_name,
-                {
-                    'type': 'offer_rejected',
-                    'offer': offer_data,
-                    'message': message_data,
-                    'conversationId': message.conversation_id
-                }
+                broadcast_data
             )
+            logger.info(f"[OFFER_REJECT] Broadcast result - success: {broadcast_success}, room_group_name: {self.room_group_name}")
+            
+            # Also send confirmation to the user who rejected
+            confirmation_response = {
+                'type': 'offer_rejected',
+                'success': True,
+                'message': 'Offer rejected successfully',
+                'offer': offer_data,
+                'message': message_data,
+                'conversationId': broadcast_data['conversationId']
+            }
+            logger.info(f"[OFFER_REJECT] Sending confirmation to user - seller_id: {seller_id}, response_keys: {list(confirmation_response.keys())}")
+            await self.send(text_data=json.dumps(confirmation_response))
+            logger.info(f"[OFFER_REJECT] Confirmation sent successfully - seller_id: {seller_id}")
+            
         except ValueError as e:
-            await self.send(text_data=json.dumps({
+            error_response = {
                 'type': 'error',
                 'message': str(e),
                 'error': 'REJECT_OFFER_ERROR',
                 'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
-            }))
+            }
+            logger.error(f"[OFFER_REJECT] Error occurred - seller_id: {seller_id}, offer_id: {offer_id}, error: {str(e)}, response: {json.dumps(error_response)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
+        except Exception as e:
+            error_response = {
+                'type': 'error',
+                'message': f'Unexpected error: {str(e)}',
+                'error': 'REJECT_OFFER_ERROR',
+                'conversationId': self.conversation_id if hasattr(self, 'conversation_id') else None
+            }
+            logger.error(f"[OFFER_REJECT] Unexpected error - seller_id: {seller_id}, offer_id: {offer_id}, error: {str(e)}", exc_info=True)
+            await self.send(text_data=json.dumps(error_response))
     
     @database_sync_to_async
     def get_message_data(self, message, current_user_id):
@@ -852,39 +1040,71 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def offer_sent(self, event):
         """Send offer sent event to WebSocket"""
-        await self.send(text_data=json.dumps({
+        user_id = str(self.user.id) if hasattr(self, 'user') and self.user else 'unknown'
+        conversation_id = event.get('conversationId') or event['message'].get('conversationId')
+        offer_id = event['offer'].get('id') if event.get('offer') else None
+        
+        response_data = {
             'type': 'offer_sent',
             'offer': event['offer'],
             'message': event['message'],
-            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
-        }))
+            'conversationId': conversation_id
+        }
+        
+        logger.info(f"[OFFER_SENT_EVENT] Sending offer_sent event - user_id: {user_id}, conversation_id: {conversation_id}, offer_id: {offer_id}, response_type: {response_data['type']}")
+        await self.send(text_data=json.dumps(response_data))
+        logger.info(f"[OFFER_SENT_EVENT] Event sent successfully - user_id: {user_id}, conversation_id: {conversation_id}")
     
     async def offer_countered(self, event):
         """Send offer countered event to WebSocket"""
-        await self.send(text_data=json.dumps({
+        user_id = str(self.user.id) if hasattr(self, 'user') and self.user else 'unknown'
+        conversation_id = event.get('conversationId') or event['message'].get('conversationId')
+        offer_id = event['offer'].get('id') if event.get('offer') else None
+        
+        response_data = {
             'type': 'offer_countered',
             'offer': event['offer'],
             'message': event['message'],
-            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
-        }))
+            'conversationId': conversation_id
+        }
+        
+        logger.info(f"[OFFER_COUNTERED_EVENT] Sending offer_countered event - user_id: {user_id}, conversation_id: {conversation_id}, offer_id: {offer_id}, response_type: {response_data['type']}")
+        await self.send(text_data=json.dumps(response_data))
+        logger.info(f"[OFFER_COUNTERED_EVENT] Event sent successfully - user_id: {user_id}, conversation_id: {conversation_id}")
     
     async def offer_accepted(self, event):
         """Send offer accepted event to WebSocket"""
-        await self.send(text_data=json.dumps({
+        user_id = str(self.user.id) if hasattr(self, 'user') and self.user else 'unknown'
+        conversation_id = event.get('conversationId') or event['message'].get('conversationId')
+        offer_id = event['offer'].get('id') if event.get('offer') else None
+        
+        response_data = {
             'type': 'offer_accepted',
             'offer': event['offer'],
             'message': event['message'],
-            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
-        }))
+            'conversationId': conversation_id
+        }
+        
+        logger.info(f"[OFFER_ACCEPTED_EVENT] Sending offer_accepted event - user_id: {user_id}, conversation_id: {conversation_id}, offer_id: {offer_id}, response_type: {response_data['type']}")
+        await self.send(text_data=json.dumps(response_data))
+        logger.info(f"[OFFER_ACCEPTED_EVENT] Event sent successfully - user_id: {user_id}, conversation_id: {conversation_id}")
     
     async def offer_rejected(self, event):
         """Send offer rejected event to WebSocket"""
-        await self.send(text_data=json.dumps({
+        user_id = str(self.user.id) if hasattr(self, 'user') and self.user else 'unknown'
+        conversation_id = event.get('conversationId') or event['message'].get('conversationId')
+        offer_id = event['offer'].get('id') if event.get('offer') else None
+        
+        response_data = {
             'type': 'offer_rejected',
             'offer': event['offer'],
             'message': event['message'],
-            'conversationId': event.get('conversationId') or event['message'].get('conversationId')
-        }))
+            'conversationId': conversation_id
+        }
+        
+        logger.info(f"[OFFER_REJECTED_EVENT] Sending offer_rejected event - user_id: {user_id}, conversation_id: {conversation_id}, offer_id: {offer_id}, response_type: {response_data['type']}")
+        await self.send(text_data=json.dumps(response_data))
+        logger.info(f"[OFFER_REJECTED_EVENT] Event sent successfully - user_id: {user_id}, conversation_id: {conversation_id}")
     
     @database_sync_to_async
     def save_message(self, sender_id, receiver_id, text, product_id, attachments, offer_id):
@@ -1013,6 +1233,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 product.updated_at = datetime.utcnow()
                 product.save()
+        
+        # Send notification to buyer with payment button (same as when seller accepts)
+        try:
+            from notifications.notification_helper import NotificationHelper
+            NotificationHelper.send_offer_accepted(
+                str(buyer_id),
+                offer_id=str(offer.id),
+                product_id=str(offer.product_id.id) if offer.product_id else None
+            )
+        except Exception as e:
+            logger.error(f"Error sending offer accepted notification for counter offer: {str(e)}")
         
         return offer
 
