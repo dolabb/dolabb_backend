@@ -360,8 +360,16 @@ class NotificationHelper:
             product = Product.objects(id=product_id).first()
             
             # Build URL with all required parameters for frontend checkout page
-            offer_price = offer.offer_price if offer else 0
-            shipping_cost = product.shipping_cost if product and hasattr(product, 'shipping_cost') else 0
+            # Use counter_offer_amount if exists (seller countered), otherwise use offer_amount
+            offer_price = 0
+            if offer:
+                if offer.counter_offer_amount:
+                    offer_price = offer.counter_offer_amount
+                else:
+                    offer_price = offer.offer_amount or 0
+            
+            # Shipping cost is on the Offer model
+            shipping_cost = offer.shipping_cost if offer and hasattr(offer, 'shipping_cost') and offer.shipping_cost else 0
             product_title = product.title if product else ''
             
             # URL encode the product title for safe URL usage
