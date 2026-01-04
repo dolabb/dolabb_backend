@@ -342,9 +342,40 @@ class NotificationHelper:
         action_button = None
         if offer_id and product_id:
             from django.conf import settings
+            from products.models import Offer, Product
+            
             # Get frontend URL from settings or use default
             frontend_url = getattr(settings, 'FRONTEND_URL', 'https://dolabb.com')
-            checkout_url = f"{frontend_url}/checkout?productId={product_id}&offerId={offer_id}"
+            
+            # Get user's language for locale prefix
+            user = User.objects(id=buyer_id).first()
+            user_language = 'en'
+            if user:
+                user_language = getattr(user, 'language', 'en')
+                if user_language not in ['en', 'ar']:
+                    user_language = 'en'
+            
+            # Fetch offer details for pricing info
+            offer = Offer.objects(id=offer_id).first()
+            product = Product.objects(id=product_id).first()
+            
+            # Build URL with all required parameters for frontend checkout page
+            offer_price = offer.offer_price if offer else 0
+            shipping_cost = product.shipping_cost if product and hasattr(product, 'shipping_cost') else 0
+            product_title = product.title if product else ''
+            
+            # URL encode the product title for safe URL usage
+            import urllib.parse
+            encoded_product = urllib.parse.quote(product_title, safe='')
+            
+            checkout_url = (
+                f"{frontend_url}/{user_language}/checkout"
+                f"?offerId={offer_id}"
+                f"&product={encoded_product}"
+                f"&productId={product_id}"
+                f"&offerPrice={offer_price}"
+                f"&shipping={shipping_cost}"
+            )
             
             action_button = {
                 'text': 'Buy Now',
